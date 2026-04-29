@@ -172,6 +172,10 @@ in
   # Kernel 7 — default on NixOS 25.11 is 6.12; we track 7 early.
   boot.kernelPackages = pkgs.linuxKernel.packages.linux_7_0;
 
+  # Basic graphics / Mesa / Vulkan — required for any GPU including VM virtio-gpu.
+  # PX13 extends this in hosts/px13/gpu-offload.nix (enable32Bit, session vars).
+  hardware.graphics.enable = true;
+
   # Firmware updates
   services.fwupd.enable = true;
   # hardware.enableAllFirmware = true;  # PX13-specific (includes AMD/Qualcomm blobs)
