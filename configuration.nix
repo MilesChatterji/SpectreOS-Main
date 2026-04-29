@@ -281,6 +281,20 @@ in
     lshw     # Hardware info
     colord   # ICC color profile management
     # nvtopPackages.full  # PX13: NVIDIA/AMD GPU monitor
+
+    # GNOME apps used standalone outside the full GNOME session
+    # TODO: evaluate moving any of these to home-manager
+    snapshot              # Camera
+    nautilus              # File browser
+    gnome-calculator      # Calculator
+    loupe                 # Image viewer
+    gnome-text-editor     # Text editor
+    gnome-disk-utility    # Disk/partition manager
+    gnome-system-monitor  # Task manager / resource monitor
+    gnome-logs            # Systemd journal viewer
+    gnome-characters      # Unicode character picker
+    gnome-font-viewer     # Font preview
+    gnome-color-manager   # Includes gcm-picker (on-screen color picker)
   ];
 
   # --- PX13-specific: NVIDIA gpu-screen-recorder capability wrapper ---
