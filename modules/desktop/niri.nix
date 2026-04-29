@@ -134,69 +134,6 @@ let
     fi
   '';
 
-  # Noctalia Shell
-  noctalia-shell = pkgs.stdenvNoCC.mkDerivation rec {
-    pname = "noctalia-shell";
-    version = "4.7.5";
-
-    src = pkgs.fetchFromGitHub {
-      owner = "noctalia-dev";
-      repo = "noctalia-shell";
-      rev = "v4.7.5";
-      sha256 = "sha256-0xoCuJSRSWcn4mCX382lCxqLbnuOrrqS4dOcdpoUmZg=";
-    };
-
-    nativeBuildInputs = with pkgs; [
-      qt6.wrapQtAppsHook
-    ];
-
-    buildInputs = with pkgs; [
-      qt6.qtbase
-      qt6.qtmultimedia
-    ];
-
-    runtimeDeps = with pkgs; [
-      unstable.noctalia-qs
-      brightnessctl
-      cava
-      cliphist
-      ddcutil
-      matugen
-      wlsunset
-      wl-clipboard
-    ] ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
-      gpu-screen-recorder
-    ];
-
-    fontsConf = pkgs.makeFontsConf {
-      fontDirectories = [
-        pkgs.roboto
-        pkgs.inter-nerdfont
-      ];
-    };
-
-    installPhase = ''
-      mkdir -p $out/share/noctalia-shell $out/bin
-      cp -r . $out/share/noctalia-shell
-      ln -s ${unstable.noctalia-qs}/bin/qs $out/bin/noctalia-shell
-    '';
-
-    preFixup = ''
-      qtWrapperArgs+=(
-        --prefix PATH : ${pkgs.lib.makeBinPath runtimeDeps}
-        --set FONTCONFIG_FILE ${fontsConf}
-        --add-flags "-p $out/share/noctalia-shell"
-      )
-    '';
-
-    meta = {
-      description = "A sleek and minimal desktop shell for Wayland, built with Quickshell";
-      homepage = "https://github.com/noctalia-dev/noctalia-shell";
-      license = pkgs.lib.licenses.mit;
-      mainProgram = "noctalia-shell";
-    };
-  };
-
   # swayidle: handles auto-dim, lock, and suspend on idle.
   # Uses Noctalia's built-in lock screen via IPC.
   # PX13: kbd_backlight save/restore lines are no-ops on non-ASUS hardware (|| true).
@@ -204,9 +141,9 @@ let
     ${pkgs.swayidle}/bin/swayidle -w \
       timeout 180 '${brightness-save-restore}/bin/brightness-save-restore save && touch /tmp/auto-brightness-disabled && ${pkgs.brightnessctl}/bin/brightnessctl --class=backlight set 10% && KBD_BRIGHTNESS=$(${pkgs.brightnessctl}/bin/brightnessctl --class=leds --device=asus::kbd_backlight get 2>/dev/null || echo "0") && echo "$KBD_BRIGHTNESS" > "$HOME/.cache/niri-kbd-brightness-backup" && ${pkgs.brightnessctl}/bin/brightnessctl --class=leds --device=asus::kbd_backlight set 0 2>/dev/null || true' \
         resume '${brightness-save-restore}/bin/brightness-save-restore restore && rm -f /tmp/auto-brightness-disabled && if [ -f "$HOME/.cache/niri-kbd-brightness-backup" ]; then KBD_BRIGHTNESS=$(cat "$HOME/.cache/niri-kbd-brightness-backup"); ${pkgs.brightnessctl}/bin/brightnessctl --class=leds --device=asus::kbd_backlight set "$KBD_BRIGHTNESS" 2>/dev/null || true; rm -f "$HOME/.cache/niri-kbd-brightness-backup"; fi' \
-      timeout 300 '${unstable.noctalia-qs}/bin/qs -p ${noctalia-shell}/share/noctalia-shell ipc call lockScreen lock' \
+      timeout 300 '${unstable.noctalia-shell}/bin/noctalia-shell ipc call lockScreen lock' \
       timeout 900 '${brightness-save-restore}/bin/brightness-save-restore save && ${pkgs.systemd}/bin/systemctl suspend' \
-        before-sleep '${unstable.noctalia-qs}/bin/qs -p ${noctalia-shell}/share/noctalia-shell ipc call lockScreen lock'
+        before-sleep '${unstable.noctalia-shell}/bin/noctalia-shell ipc call lockScreen lock'
   '';
 
   # --- PX13-specific: AMD iGPU wrapper for Niri ---
@@ -235,8 +172,7 @@ in
   environment.systemPackages = with pkgs; [
     niri
     xwayland-satellite
-    unstable.noctalia-qs
-    noctalia-shell
+    unstable.noctalia-shell  # 4.7.6 — noctalia-qs bundled, replaces custom derivation
     brightness-save-restore
     brightnessctl-manual
     auto-brightness-sensor
@@ -245,9 +181,11 @@ in
     wlsunset
     wlr-randr
     swayidle
+    cava          # audio visualiser — not bundled in nixpkgs noctalia-shell wrapper
+    matugen       # material theming — not bundled in nixpkgs noctalia-shell wrapper
     # PX13: niri-amd-wrapper, enable-mst-outputs, apply-color-profile
   ] ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
-    gpu-screen-recorder
+    gpu-screen-recorder  # screen recording — not bundled in nixpkgs noctalia-shell wrapper
   ];
 
   # --- PX13-specific: replace stock Niri session with AMD-optimized one ---
@@ -258,7 +196,10 @@ in
     wantedBy = [ "graphical-session.target" ];
     after = [ "graphical-session.target" ];
     serviceConfig = {
-      ExecStart = "${noctalia-shell}/bin/noctalia-shell";
+      # nixpkgs noctalia-shell 4.7.6 is a compiled wrapper that already embeds its
+      # runtimeDeps (brightnessctl, cliphist, ddcutil, wlsunset, wl-clipboard, wlr-randr).
+      # System PATH covers nmcli and anything else from the broader system.
+      ExecStart = "${unstable.noctalia-shell}/bin/noctalia-shell";
       Restart = "on-failure";
       Environment = [
         "NOCTALIA_SETTINGS_FALLBACK=%h/.config/noctalia/gui-settings.json"
@@ -266,18 +207,7 @@ in
         "DRI_PRIME=0"
         "__NV_PRIME_RENDER_OFFLOAD=0"
         "__VK_LAYER_NV_optimus="
-        "PATH=/run/wrappers/bin:${pkgs.lib.makeBinPath (with pkgs; [
-          unstable.noctalia-qs
-          brightnessctl
-          cava
-          cliphist
-          ddcutil
-          matugen
-          wlsunset
-          wl-clipboard
-        ] ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
-          gpu-screen-recorder
-        ])}:/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+        "PATH=/run/wrappers/bin:/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
       ];
       PassEnvironment = [ "PATH" ];
     };
