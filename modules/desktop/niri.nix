@@ -142,7 +142,6 @@ in
     auto-brightness-sensor
     brightnessctl
     bc
-    wlsunset
     wlr-randr
     cava          # audio visualiser — not bundled in nixpkgs noctalia-shell wrapper
     matugen       # material theming — not bundled in nixpkgs noctalia-shell wrapper
@@ -173,19 +172,6 @@ in
         "PATH=/run/wrappers/bin:/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
       ];
       PassEnvironment = [ "PATH" ];
-    };
-  };
-
-  systemd.user.services.wlsunset = {
-    description = "wlsunset - Nightlight (blue light filter) for Wayland";
-    wantedBy = [ "graphical-session.target" ];
-    after = [ "graphical-session.target" ];
-    serviceConfig = {
-      Type = "simple";
-      ExecStart = "${pkgs.wlsunset}/bin/wlsunset";
-      Restart = "on-failure";
-      RestartSec = 5;
-      PassEnvironment = [ "WAYLAND_DISPLAY" "XDG_RUNTIME_DIR" "XDG_SESSION_TYPE" ];
     };
   };
 
