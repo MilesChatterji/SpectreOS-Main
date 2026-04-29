@@ -6,29 +6,6 @@
 let
   unstable = import <unstable> { config.allowUnfree = true; };
 
-  # Save/restore display brightness around idle dimming
-  brightness-save-restore = pkgs.writeScriptBin "brightness-save-restore" ''
-    #!${pkgs.bash}/bin/bash
-    BRIGHTNESS_FILE="$HOME/.cache/niri-brightness-backup"
-    case "$1" in
-      save)
-        CURRENT=$(brightnessctl --class=backlight get 2>/dev/null || echo "50")
-        echo "$CURRENT" > "$BRIGHTNESS_FILE"
-        ;;
-      restore)
-        if [ -f "$BRIGHTNESS_FILE" ]; then
-          SAVED=$(cat "$BRIGHTNESS_FILE")
-          brightnessctl --class=backlight set "$SAVED" 2>/dev/null || true
-          rm -f "$BRIGHTNESS_FILE"
-        fi
-        ;;
-      *)
-        echo "Usage: brightness-save-restore save|restore" >&2
-        exit 1
-        ;;
-    esac
-  '';
-
   # Auto brightness from ambient light sensor.
   # Dynamically discovers the HID-SENSOR-200041 sensor path.
   # Silently exits if no sensor is present — safe on hardware without one.
@@ -134,18 +111,6 @@ let
     fi
   '';
 
-  # swayidle: handles auto-dim, lock, and suspend on idle.
-  # Uses Noctalia's built-in lock screen via IPC.
-  # PX13: kbd_backlight save/restore lines are no-ops on non-ASUS hardware (|| true).
-  swayidle-start = pkgs.writeShellScript "swayidle-start" ''
-    ${pkgs.swayidle}/bin/swayidle -w \
-      timeout 180 '${brightness-save-restore}/bin/brightness-save-restore save && touch /tmp/auto-brightness-disabled && ${pkgs.brightnessctl}/bin/brightnessctl --class=backlight set 10% && KBD_BRIGHTNESS=$(${pkgs.brightnessctl}/bin/brightnessctl --class=leds --device=asus::kbd_backlight get 2>/dev/null || echo "0") && echo "$KBD_BRIGHTNESS" > "$HOME/.cache/niri-kbd-brightness-backup" && ${pkgs.brightnessctl}/bin/brightnessctl --class=leds --device=asus::kbd_backlight set 0 2>/dev/null || true' \
-        resume '${brightness-save-restore}/bin/brightness-save-restore restore && rm -f /tmp/auto-brightness-disabled && if [ -f "$HOME/.cache/niri-kbd-brightness-backup" ]; then KBD_BRIGHTNESS=$(cat "$HOME/.cache/niri-kbd-brightness-backup"); ${pkgs.brightnessctl}/bin/brightnessctl --class=leds --device=asus::kbd_backlight set "$KBD_BRIGHTNESS" 2>/dev/null || true; rm -f "$HOME/.cache/niri-kbd-brightness-backup"; fi' \
-      timeout 300 '${unstable.noctalia-shell}/bin/noctalia-shell ipc call lockScreen lock' \
-      timeout 900 '${brightness-save-restore}/bin/brightness-save-restore save && ${pkgs.systemd}/bin/systemctl suspend' \
-        before-sleep '${unstable.noctalia-shell}/bin/noctalia-shell ipc call lockScreen lock'
-  '';
-
   # --- PX13-specific: AMD iGPU wrapper for Niri ---
   # Detects AMD card/render node at runtime and forces Niri to use it exclusively,
   # preventing NVIDIA from initializing and blocking runtime power-down.
@@ -172,15 +137,13 @@ in
   environment.systemPackages = with pkgs; [
     niri
     xwayland-satellite
-    unstable.noctalia-shell  # 4.7.6 — noctalia-qs bundled, replaces custom derivation
-    brightness-save-restore
+    unstable.noctalia-shell  # 4.7.6 — noctalia-qs bundled, idle management built-in
     brightnessctl-manual
     auto-brightness-sensor
     brightnessctl
     bc
     wlsunset
     wlr-randr
-    swayidle
     cava          # audio visualiser — not bundled in nixpkgs noctalia-shell wrapper
     matugen       # material theming — not bundled in nixpkgs noctalia-shell wrapper
     # PX13: niri-amd-wrapper, enable-mst-outputs, apply-color-profile
@@ -241,22 +204,6 @@ in
     serviceConfig = {
       ExecStart = "${auto-brightness-sensor}/bin/auto-brightness-sensor";
       Type = "oneshot";
-      PassEnvironment = [ "WAYLAND_DISPLAY" "XDG_RUNTIME_DIR" "XDG_SESSION_TYPE" ];
-      Environment = [
-        "PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
-      ];
-    };
-  };
-
-  systemd.user.services.swayidle = {
-    description = "swayidle - Wayland idle management daemon";
-    wantedBy = [ "graphical-session.target" ];
-    after = [ "graphical-session.target" ];
-    serviceConfig = {
-      Type = "simple";
-      ExecStart = "${swayidle-start}";
-      Restart = "on-failure";
-      RestartSec = 5;
       PassEnvironment = [ "WAYLAND_DISPLAY" "XDG_RUNTIME_DIR" "XDG_SESSION_TYPE" ];
       Environment = [
         "PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
