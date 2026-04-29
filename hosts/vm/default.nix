@@ -21,6 +21,9 @@
 
     # SpectreOS base
     ../../configuration.nix
+
+    # User account — replace with installer-generated file on real installs.
+    ./user.nix
   ];
 
   networking.hostName = "spectreos-vm";

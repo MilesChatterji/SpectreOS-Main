@@ -264,21 +264,8 @@ in
     pulse.enable = true;
   };
 
-  # Default user account — the installer will replace this with the user's chosen name.
-  # PX13: extraGroups includes "uinput" "input" "i2c" for ASUS DialPad hardware access.
-  users.users.miles = {
-    isNormalUser = true;
-    description = "Miles Chatterji";
-    extraGroups = [
-      "networkmanager"
-      "wheel"
-      "video"
-      "render"
-      "libvirtd"
-      # "uinput" "input" "i2c"  # PX13: required for ASUS DialPad
-    ];
-    packages = with pkgs; [];
-  };
+  # User account — defined per install in hosts/<hostname>/user.nix.
+  # The installer generates that file from the user's input at install time.
 
   programs.firefox.enable = true;
 
