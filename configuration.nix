@@ -221,12 +221,25 @@ in
     LC_TIME = "en_US.UTF-8";
   };
 
-  services.xserver.enable = true;
+  # greetd — lightweight Wayland-native display manager
+  services.greetd = {
+    enable = true;
+    settings = {
+      default_session = {
+        command = "${pkgs.greetd.tuigreet}/bin/tuigreet --time --remember --greeting 'SpectreOS' --cmd ${pkgs.niri}/bin/niri-session";
+        user = "greeter";
+      };
+    };
+  };
 
-  # GNOME — available as a fallback / alternative session alongside Niri
-  services.displayManager.gdm.enable = true;
-  services.desktopManager.gnome.enable = true;
+  # XDG desktop portals — file pickers, screen sharing, etc. for Wayland apps
+  xdg.portal = {
+    enable = true;
+    extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+    config.common.default = [ "gtk" ];
+  };
 
+  # Keyboard layout — read by libxkbcommon and Wayland compositors
   services.xserver.xkb = {
     layout = "us";
     variant = "";
