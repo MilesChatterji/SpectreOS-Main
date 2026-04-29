@@ -4,7 +4,13 @@
 { config, pkgs, ... }:
 
 let
-  unstable = import <unstable> { config.allowUnfree = true; };
+  # Pinned nixpkgs-unstable commit — provides noctalia-shell 4.7.6.
+  # To update: nix-prefetch-url --unpack https://github.com/NixOS/nixpkgs/archive/<new-commit>.tar.gz
+  unstableSrc = builtins.fetchTarball {
+    url = "https://github.com/NixOS/nixpkgs/archive/6368eda62c9775c38ef7f714b2555a741c20c72d.tar.gz";
+    sha256 = "0lhfh8fcsaifwzs388sg6cy0j2galj8ssfmk6wb0pc8alwdpi868";
+  };
+  unstable = import unstableSrc { config.allowUnfree = true; };
 
   # Auto brightness from ambient light sensor.
   # Dynamically discovers the HID-SENSOR-200041 sensor path.
