@@ -32,10 +32,6 @@
   # from the hypervisor. No-op outside a QEMU/KVM guest.
   services.qemuGuest.enable = true;
 
-  # Temporary login password for VM testing. Change after first boot.
-  # The installer will replace this with a proper hashed password per user.
-  users.users.miles.initialPassword = "spectreos";
-
   # SSH for easier VM access (connect from host instead of using the console).
   services.openssh = {
     enable = true;
