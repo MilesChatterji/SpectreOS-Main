@@ -74,3 +74,18 @@ gnome-color-manager   # Includes gcm-picker (on-screen color picker)
 ## Apply order
 
 Do (2) before (1) and rebuild once to confirm the apps are explicitly present before removing the GNOME session that was implicitly providing them. Then do (1) and rebuild again.
+
+---
+
+## Blocker: MST (DisplayPort Multi-Stream Transport) on Niri
+
+**Do not apply change (1) until MST works reliably under Niri on the host.**
+
+MST currently works in GNOME but not consistently in Niri. This is a **compositor constraint, not a hardware or bandwidth issue:**
+
+- GNOME uses Mutter, which has mature MST hub topology handling — it enumerates and initialises the full MST output tree reliably at session start.
+- Niri is wlroots-based. wlroots has weaker MST support: the DRM layer detects the outputs, but the compositor does not always initialise them. The `enable-mst-outputs` script in `hosts/px13/` (commented out in `modules/desktop/niri.nix`) was a workaround — it polled for disabled outputs and pushed them on via Niri IPC after session start. Even that had cases where it failed with a DRM error and required manual entries in `~/.config/niri/config.kdl`.
+
+**This is a known open area in the wlroots ecosystem.** It will likely improve as Niri matures. Keep an eye on Niri release notes for MST/multi-monitor improvements before making the switch on the host.
+
+**VM note:** This is not a concern for VM testing. QEMU/KVM presents a single virtual display to the guest regardless of what monitors are connected to the host. The host WM handles all real monitor topology transparently.
