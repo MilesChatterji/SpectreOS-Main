@@ -1,0 +1,245 @@
+// SpectreOS default niri configuration
+// https://yalter.github.io/niri/Configuration:-Introduction
+
+// Uncomment to enable the niri animation collection (install separately):
+// include "niri-animation-collection-main/animations/crt_degauss.kdl"
+
+prefer-no-csd
+
+input {
+    keyboard {
+        xkb {
+            // niri fetches xkb settings from org.freedesktop.locale1 if this is empty.
+            // Use localectl set-x11-keymap to configure layout.
+        }
+        numlock
+    }
+
+    touchpad {
+        tap
+        natural-scroll
+    }
+
+    mouse {
+        // natural-scroll
+    }
+
+    focus-follows-mouse max-scroll-amount="0%"
+}
+
+layout {
+    gaps 16
+    center-focused-column "never"
+
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+
+    default-column-width { proportion 0.66667; }
+
+    focus-ring {
+        width 2
+        active-color "#F2AE49"
+        inactive-color "#505050"
+    }
+
+    border {
+        off
+        width 1
+        active-color "#ffc87f"
+        inactive-color "#505050"
+        urgent-color "#9b0000"
+    }
+
+    shadow {
+        softness 30
+        spread 5
+        offset x=0 y=5
+        color "#0007"
+    }
+
+    struts {
+        // left 64
+        // right 64
+        // top 64
+        // bottom 64
+    }
+}
+
+hotkey-overlay {
+    // skip-at-startup
+}
+
+screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+
+window-rule {
+    match app-id=r#"^org\.wezfurlong\.wezterm$"#
+    default-column-width {}
+}
+
+window-rule {
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-floating true
+}
+
+window-rule {
+    geometry-corner-radius 6
+    clip-to-geometry true
+}
+
+binds {
+    Alt+Shift+Slash { show-hotkey-overlay; }
+
+    // Terminal — change "ghostty" to your preferred terminal
+    Alt+T hotkey-overlay-title="Open a Terminal" { spawn "ghostty"; }
+    Alt+Space hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
+    Super+Alt+L hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
+
+    Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
+
+    XF86AudioRaiseVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-"; }
+    XF86AudioMute        allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"; }
+    XF86AudioMicMute     allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"; }
+
+    XF86MonBrightnessUp   allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "+10%"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "10%-"; }
+
+    // Keyboard backlight (no-op on hardware without it)
+    XF86KbdBrightnessUp   allow-when-locked=true { spawn "brightnessctl" "--class=leds" "--device=asus::kbd_backlight" "set" "+1"; }
+    XF86KbdBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=leds" "--device=asus::kbd_backlight" "set" "1-"; }
+
+    Alt+O repeat=false { toggle-overview; }
+    Alt+Q repeat=false { close-window; }
+
+    Alt+Left  { focus-column-left; }
+    Alt+Down  { focus-window-down; }
+    Alt+Up    { focus-window-up; }
+    Alt+Right { focus-column-right; }
+    Alt+H     { focus-column-left; }
+    Alt+J     { focus-window-down; }
+    Alt+K     { focus-window-up; }
+    Alt+L     { focus-column-right; }
+
+    Alt+Ctrl+Left  { move-column-left; }
+    Alt+Ctrl+Down  { move-window-down; }
+    Alt+Ctrl+Up    { move-window-up; }
+    Alt+Ctrl+Right { move-column-right; }
+    Alt+Ctrl+H     { move-column-left; }
+    Alt+Ctrl+J     { move-window-down; }
+    Alt+Ctrl+K     { move-window-up; }
+    Alt+Ctrl+L     { move-column-right; }
+
+    Alt+Home      { focus-column-first; }
+    Alt+End       { focus-column-last; }
+    Alt+Ctrl+Home { move-column-to-first; }
+    Alt+Ctrl+End  { move-column-to-last; }
+
+    Alt+Shift+Left  { focus-monitor-left; }
+    Alt+Shift+Down  { focus-monitor-down; }
+    Alt+Shift+Up    { focus-monitor-up; }
+    Alt+Shift+Right { focus-monitor-right; }
+    Alt+Shift+H     { focus-monitor-left; }
+    Alt+Shift+J     { focus-monitor-down; }
+    Alt+Shift+K     { focus-monitor-up; }
+    Alt+Shift+L     { focus-monitor-right; }
+
+    Alt+Shift+Ctrl+Left  { move-column-to-monitor-left; }
+    Alt+Shift+Ctrl+Down  { move-column-to-monitor-down; }
+    Alt+Shift+Ctrl+Up    { move-column-to-monitor-up; }
+    Alt+Shift+Ctrl+Right { move-column-to-monitor-right; }
+    Alt+Shift+Ctrl+H     { move-column-to-monitor-left; }
+    Alt+Shift+Ctrl+J     { move-column-to-monitor-down; }
+    Alt+Shift+Ctrl+K     { move-column-to-monitor-up; }
+    Alt+Shift+Ctrl+L     { move-column-to-monitor-right; }
+
+    Alt+Page_Down      { focus-workspace-down; }
+    Alt+Page_Up        { focus-workspace-up; }
+    Alt+U              { focus-workspace-down; }
+    Alt+I              { focus-workspace-up; }
+    Alt+Ctrl+Page_Down { move-column-to-workspace-down; }
+    Alt+Ctrl+Page_Up   { move-column-to-workspace-up; }
+    Alt+Ctrl+U         { move-column-to-workspace-down; }
+    Alt+Ctrl+I         { move-column-to-workspace-up; }
+
+    Alt+Shift+Page_Down { move-workspace-down; }
+    Alt+Shift+Page_Up   { move-workspace-up; }
+    Alt+Shift+U         { move-workspace-down; }
+    Alt+Shift+I         { move-workspace-up; }
+
+    Alt+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }
+    Alt+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }
+    Alt+Ctrl+WheelScrollDown cooldown-ms=150 { move-column-to-workspace-down; }
+    Alt+Ctrl+WheelScrollUp   cooldown-ms=150 { move-column-to-workspace-up; }
+
+    Alt+WheelScrollRight      { focus-column-right; }
+    Alt+WheelScrollLeft       { focus-column-left; }
+    Alt+Ctrl+WheelScrollRight { move-column-right; }
+    Alt+Ctrl+WheelScrollLeft  { move-column-left; }
+
+    Alt+Shift+WheelScrollDown      { focus-column-right; }
+    Alt+Shift+WheelScrollUp        { focus-column-left; }
+    Alt+Ctrl+Shift+WheelScrollDown { move-column-right; }
+    Alt+Ctrl+Shift+WheelScrollUp   { move-column-left; }
+
+    Alt+1 { focus-workspace 1; }
+    Alt+2 { focus-workspace 2; }
+    Alt+3 { focus-workspace 3; }
+    Alt+4 { focus-workspace 4; }
+    Alt+5 { focus-workspace 5; }
+    Alt+6 { focus-workspace 6; }
+    Alt+7 { focus-workspace 7; }
+    Alt+8 { focus-workspace 8; }
+    Alt+9 { focus-workspace 9; }
+    Alt+Ctrl+1 { move-column-to-workspace 1; }
+    Alt+Ctrl+2 { move-column-to-workspace 2; }
+    Alt+Ctrl+3 { move-column-to-workspace 3; }
+    Alt+Ctrl+4 { move-column-to-workspace 4; }
+    Alt+Ctrl+5 { move-column-to-workspace 5; }
+    Alt+Ctrl+6 { move-column-to-workspace 6; }
+    Alt+Ctrl+7 { move-column-to-workspace 7; }
+    Alt+Ctrl+8 { move-column-to-workspace 8; }
+    Alt+Ctrl+9 { move-column-to-workspace 9; }
+
+    Alt+BracketLeft  { consume-or-expel-window-left; }
+    Alt+BracketRight { consume-or-expel-window-right; }
+
+    Alt+Comma  { consume-window-into-column; }
+    Alt+Period { expel-window-from-column; }
+
+    Alt+R       { switch-preset-column-width; }
+    Alt+Shift+R { switch-preset-window-height; }
+    Alt+Ctrl+R  { reset-window-height; }
+    Alt+F       { maximize-column; }
+    Alt+Shift+F { fullscreen-window; }
+    Alt+Ctrl+F  { expand-column-to-available-width; }
+    Alt+C       { center-column; }
+    Alt+Ctrl+C  { center-visible-columns; }
+
+    Alt+Minus       { set-column-width "-10%"; }
+    Alt+Equal       { set-column-width "+10%"; }
+    Alt+Shift+Minus { set-window-height "-10%"; }
+    Alt+Shift+Equal { set-window-height "+10%"; }
+
+    Alt+V       { toggle-window-floating; }
+    Alt+Shift+V { switch-focus-between-floating-and-tiling; }
+    Alt+W       { toggle-column-tabbed-display; }
+
+    Print      { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print  { screenshot-window; }
+
+    Alt+P { spawn "playerctl" "play-pause"; }
+
+    // Night light toggle (wlsunset service)
+    Alt+Shift+N { spawn-sh "systemctl --user is-active wlsunset.service && systemctl --user stop wlsunset.service || systemctl --user start wlsunset.service"; }
+
+    Alt+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Alt+Shift+E { quit; }
+    Ctrl+Alt+Delete { quit; }
+    Alt+Shift+P { power-off-monitors; }
+}
+
+include "./noctalia.kdl"

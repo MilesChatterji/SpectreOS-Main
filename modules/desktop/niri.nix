@@ -149,8 +149,9 @@ in
     brightnessctl
     bc
     wlr-randr
-    cava          # audio visualiser — not bundled in nixpkgs noctalia-shell wrapper
-    matugen       # material theming — not bundled in nixpkgs noctalia-shell wrapper
+    wlsunset       # night light — noctalia toggles this service for its nightlight feature
+    cava           # audio visualiser — not bundled in nixpkgs noctalia-shell wrapper
+    matugen        # material theming — not bundled in nixpkgs noctalia-shell wrapper
     # PX13: niri-amd-wrapper, enable-mst-outputs, apply-color-profile
   ] ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
     gpu-screen-recorder  # screen recording — not bundled in nixpkgs noctalia-shell wrapper
@@ -178,6 +179,20 @@ in
         "PATH=/run/wrappers/bin:/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
       ];
       PassEnvironment = [ "PATH" ];
+    };
+  };
+
+  # wlsunset provides night light colour temperature adjustment.
+  # Noctalia's nightlight toggle starts/stops this service via systemctl --user.
+  # The service is not started automatically — noctalia controls when it runs.
+  systemd.user.services.wlsunset = {
+    description = "Night light via wlsunset";
+    after = [ "graphical-session.target" ];
+    partOf = [ "graphical-session.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.wlsunset}/bin/wlsunset -t 4500 -T 6500";
+      Restart = "on-failure";
+      PassEnvironment = [ "WAYLAND_DISPLAY" "XDG_RUNTIME_DIR" ];
     };
   };
 

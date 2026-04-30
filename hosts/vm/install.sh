@@ -148,6 +148,16 @@ NIXEOF
 info "Installing SpectreOS (this will take a while)..."
 nixos-install --no-root-passwd
 
+# --- default configs ---
+# Copy niri and noctalia default configs into the new user's home.
+# nixos-enter runs commands inside the installed system so chown resolves correctly.
+info "Installing default configurations..."
+nixos-enter --root /mnt -- mkdir -p /home/$USERNAME/.config/niri /home/$USERNAME/.config/noctalia
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl /home/$USERNAME/.config/niri/config.kdl
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl /home/$USERNAME/.config/niri/noctalia.kdl
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/gui-settings.json /home/$USERNAME/.config/noctalia/gui-settings.json
+nixos-enter --root /mnt -- chown -R $USERNAME:users /home/$USERNAME/.config
+
 echo ""
 info "Done. SpectreOS is installed."
 echo ""
