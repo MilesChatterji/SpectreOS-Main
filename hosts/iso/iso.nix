@@ -32,7 +32,7 @@ let
     echo ""
     echo "  Press Enter to begin, or Ctrl+C to drop to a shell."
     read -r
-    bash /etc/spectreos-install.sh
+    ${pkgs.bash}/bin/bash /etc/spectreos-install.sh
     echo ""
     echo "  Installer exited. Dropping to emergency shell."
     exec ${pkgs.bash}/bin/bash
