@@ -5,6 +5,8 @@ include "niri-animation-collection-main/animations/crt_degauss.kdl"
 
 prefer-no-csd
 
+spawn-sh-at-startup "swww-daemon 2>/dev/null; sleep 2 && swww query 2>/dev/null | grep -q 'None' && swww img ~/Pictures/SpectreOS/SpectreOSWall.png --transition-type fade"
+
 input {
     keyboard {
         xkb {
