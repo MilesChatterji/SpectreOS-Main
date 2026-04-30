@@ -1,0 +1,168 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/master/doc/json_schema.json",
+  "keyPaddingLeft": 0,
+  "modules": [
+    {
+     "type": "custom",
+      "format": "{#yellow}╭──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}│ {#bold_white}Hardware{#yellow}"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}├──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "host",
+      "key": "{#yellow}│  Model"
+    },
+    {
+      "type": "cpu",
+      "key": "{#yellow}│  CPU"
+    },
+    {
+      "type": "gpu",
+      "key": "{#yellow}│  GPU"
+    },
+    {
+      "type": "memory",
+      "key": "{#yellow}│  Memory"
+    },
+    {
+      "type": "disk",
+      "key": "{#yellow}│  Disk"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╰──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╭──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}│ {#bold_white}OS{#yellow}"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}├──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "os",
+      "key": "{#yellow}│  OS"
+    },
+    {
+      "type": "kernel",
+      "key": "{#yellow}│  Kernel"
+    },
+    {
+      "type": "uptime",
+      "key": "{#yellow}│  Uptime"
+    },
+    {
+      "key": "{#yellow}│  OS Age",
+      "type": "command",
+      "keyColor": "yellow",
+      "text": "~/.local/bin/fastfetch-install-date.sh"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╰──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╭──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}│ {#bold_white}Terminal{#yellow}"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}├──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "terminal",
+      "key": "{#yellow}│  Terminal"
+    },
+    {
+      "type": "terminalfont",
+      "key": "{#yellow}│  Terminal Font"
+    },
+    {
+      "type": "packages",
+      "key": "{#yellow}│  Packages"
+    },
+    {
+      "type": "shell",
+      "key": "{#yellow}│  Shell"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╰──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╭──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}│ {#bold_white}Desktop{#yellow}"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}├──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "de",
+      "key": "{#yellow}│  Desktop Environment"
+    },
+    {
+      "type": "wm",
+      "key": "{#yellow}│  Window Manager"
+    },
+    {
+      "type": "wmtheme",
+      "key": "{#yellow}│  WM Theme"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╰──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╭──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}│ {#bold_white}Network{#yellow}"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}├──────────────────────────────────────────────────────────"
+    },
+    {
+      "type": "wifi",
+      "key": "{#yellow}│  Wifi Network"
+    },
+    {
+      "type": "localip",
+      "key": "{#yellow}│  Local IP"
+    },
+    {
+      "type": "publicip",
+      "key": "{#yellow}│  Public IP"
+    },
+    {
+      "type": "custom",
+      "format": "{#yellow}╰──────────────────────────────────────────────────────────"
+    }
+  ],
+  "logo": {
+    "type": "file-raw",
+    "source": "~/Pictures/spectre.txt"
+  }
+}

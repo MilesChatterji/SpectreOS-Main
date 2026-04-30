@@ -282,6 +282,7 @@ in
     colord        # ICC color profile management
     home-manager  # User environment management
     ghostty       # Default terminal — needed before home-manager runs on first boot
+    swww          # Wallpaper daemon — used by niri at startup before home-manager runs
     # GNOME apps used standalone outside the full GNOME session
     # TODO: evaluate moving any of these to home-manager
     snapshot              # Camera

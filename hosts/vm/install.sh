@@ -155,7 +155,9 @@ nixos-enter --root /mnt -- mkdir -p \
   /home/$USERNAME/.config/noctalia \
   /home/$USERNAME/.config/home-manager \
   /home/$USERNAME/.config/ghostty/themes \
+  /home/$USERNAME/.config/fastfetch \
   /home/$USERNAME/Pictures/SpectreOS \
+  /home/$USERNAME/.local/bin \
   /home/$USERNAME/.local/share/spectreos \
   /home/$USERNAME/.local/share/fonts \
   /home/$USERNAME/.local/state/nix/profiles
@@ -170,6 +172,11 @@ nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/niri-animation-
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/settings.json /home/$USERNAME/.config/noctalia/settings.json
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/ghostty/config          /home/$USERNAME/.config/ghostty/config
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/ghostty/themes/noctalia /home/$USERNAME/.config/ghostty/themes/noctalia
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/fastfetch/config.jsonc  /home/$USERNAME/.config/fastfetch/config.jsonc
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/fastfetch/fastfetch-install-date.sh \
+  /home/$USERNAME/.local/bin/fastfetch-install-date.sh
+nixos-enter --root /mnt -- chmod +x /home/$USERNAME/.local/bin/fastfetch-install-date.sh
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/spectre.txt /home/$USERNAME/Pictures/spectre.txt
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/SpectreOSWall.png /home/$USERNAME/Pictures/SpectreOS/SpectreOSWall.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/Spectreicon.png   /home/$USERNAME/.local/share/spectreos/Spectreicon.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/fonts/ndot-47-inspired-by-nothing.ttf \
@@ -223,9 +230,8 @@ touch /mnt/home/$USERNAME/.hm-pending
 
 # Fix ownership of files written after the initial chown (home.nix, setup script, flag).
 nixos-enter --root /mnt -- chown -R $USERNAME:users /home/$USERNAME/.config
-nixos-enter --root /mnt -- chown $USERNAME:users \
-  /home/$USERNAME/.local/share/spectreos/hm-setup.sh \
-  /home/$USERNAME/.hm-pending
+nixos-enter --root /mnt -- chown -R $USERNAME:users /home/$USERNAME/.local
+nixos-enter --root /mnt -- chown $USERNAME:users /home/$USERNAME/.hm-pending
 
 echo ""
 info "Done. SpectreOS is installed."
