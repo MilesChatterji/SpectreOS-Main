@@ -15,10 +15,7 @@
 { config, pkgs, lib, ... }:
 
 let
-  # Root's shell is replaced with this installer launcher.
-  # When root logs in (on console or SSH), this script runs.
-  # Ctrl+C drops to a real bash shell; success reboots automatically.
-  installerShell = pkgs.writeShellScript "spectreos-installer-shell" ''
+  installerLauncher = pkgs.writeShellScript "spectreos-installer-launch" ''
     echo ""
     echo "  ╔══════════════════════════════════════════════════════════╗"
     echo "  ║                                                          ║"
@@ -36,8 +33,9 @@ let
     echo "  Press Enter to begin, or Ctrl+C to drop to a shell."
     read -r
     bash /etc/spectreos-install.sh
-    # Installer exited (error or cancelled) — drop to a real shell.
-    exec ${pkgs.bash}/bin/bash --login
+    echo ""
+    echo "  Installer exited. Dropping to emergency shell."
+    exec ${pkgs.bash}/bin/bash
   '';
 in
 
@@ -73,7 +71,14 @@ in
     settings.PermitRootLogin = lib.mkForce "yes";
     settings.PasswordAuthentication = true;
   };
-  users.users.root.password = lib.mkForce "spectreos";
+  users.users.root = {
+    # Override the base installer's empty initialHashedPassword with a real one.
+    initialHashedPassword = lib.mkForce (builtins.readFile (
+      pkgs.runCommand "hash-spectreos" { nativeBuildInputs = [ pkgs.openssl ]; } ''
+        printf '%s' "$(openssl passwd -6 'spectreos')" > $out
+      ''
+    ));
+  };
 
   # Bake install.sh into the ISO filesystem.
   # The script itself clones the full repo from GitHub during the install run,
@@ -83,16 +88,30 @@ in
     mode = "0755";
   };
 
-  # Replace root's shell with the installer launcher.
-  # This fires on both console auto-login and SSH — no login shell init
-  # hooks needed, no race with systemd session setup.
-  users.users.root.shell = installerShell;
+  # Replace getty on TTY1 with a systemd service that owns the console
+  # directly and runs the installer. This avoids shell package registration
+  # requirements and login shell init races with systemd-logind.
+  systemd.services."getty@tty1".enable = lib.mkForce false;
 
-  # Auto-login root on TTY1.
-  services.getty.autologinUser = lib.mkForce "root";
+  systemd.services.spectreos-installer = {
+    description = "SpectreOS VM Installer";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "systemd-user-sessions.service" "network.target" "systemd-logind.service" ];
+    serviceConfig = {
+      Type = "idle";
+      ExecStart = "${pkgs.bash}/bin/bash ${installerLauncher}";
+      StandardInput = "tty";
+      StandardOutput = "tty";
+      StandardError = "tty";
+      TTYPath = "/dev/tty1";
+      TTYReset = "yes";
+      TTYVHangup = "yes";
+      Restart = "no";
+    };
+  };
 
   # ISO metadata
-  isoImage.isoName = "spectreos-vm-installer.iso";
+  image.fileName = "spectreos-vm-installer.iso";
   isoImage.volumeID = "SPECTREOS_VM";
 
   system.stateVersion = "25.11";
