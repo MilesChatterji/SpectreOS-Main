@@ -24,7 +24,7 @@ echo ""
 echo "  ──────────────────────────────────────────────────────────"
 echo ""
 
-home-manager switch --option max-jobs 2 --option cores 2
+home-manager switch -b backup --option max-jobs 2 --option cores 2
 EXIT=$?
 
 echo ""
