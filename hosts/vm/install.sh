@@ -23,11 +23,12 @@ error() { echo "error: $*" >&2; exit 1; }
 command -v parted &>/dev/null || error "parted not found"
 
 # Hash a password using openssl, fetching it via nix-shell if not in PATH.
+# Status messages go to stderr so they are not captured by $(...).
 hash_password() {
   if command -v openssl &>/dev/null; then
     openssl passwd -6 -stdin <<< "$1"
   else
-    info "openssl not in PATH — fetching via nix-shell (one-time download)..."
+    echo "==> openssl not in PATH — fetching via nix-shell (one-time download)..." >&2
     nix-shell -p openssl --run 'openssl passwd -6 -stdin' <<< "$1"
   fi
 }
