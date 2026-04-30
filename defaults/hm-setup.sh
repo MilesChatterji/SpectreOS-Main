@@ -33,6 +33,11 @@ echo ""
 
 if [ "$EXIT" -eq 0 ]; then
     rm -f "$FLAG"
+
+    # Apply wallpaper now — swww-daemon is already running from niri startup.
+    WALLPAPER="$HOME/Pictures/SpectreOS/SpectreOSWall.png"
+    [ -f "$WALLPAPER" ] && swww img "$WALLPAPER" --transition-type fade 2>/dev/null || true
+
     echo "  Setup complete. Your SpectreOS environment is ready."
     echo ""
     echo "  For the best experience, a reboot is recommended."

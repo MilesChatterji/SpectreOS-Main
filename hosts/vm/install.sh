@@ -230,4 +230,9 @@ echo ""
 echo "  Username : $USERNAME"
 echo "  SSH      : ssh $USERNAME@<vm-ip>  (enabled, password auth on)"
 echo ""
-echo "Run 'reboot' to start SpectreOS."
+echo "Rebooting in 5 seconds... (Ctrl+C to cancel)"
+for i in 5 4 3 2 1; do
+    printf "  %s...\n" "$i"
+    sleep 1
+done
+reboot
