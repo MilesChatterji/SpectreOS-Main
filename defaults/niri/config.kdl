@@ -1,8 +1,7 @@
 // SpectreOS default niri configuration
 // https://yalter.github.io/niri/Configuration:-Introduction
 
-// Uncomment to enable the niri animation collection (install separately):
-// include "niri-animation-collection-main/animations/crt_degauss.kdl"
+include "niri-animation-collection-main/animations/crt_degauss.kdl"
 
 prefer-no-csd
 

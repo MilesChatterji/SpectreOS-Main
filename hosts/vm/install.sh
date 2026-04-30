@@ -151,7 +151,7 @@ nixos-install --no-root-passwd
 # --- default configs and branding ---
 info "Installing default configurations..."
 nixos-enter --root /mnt -- mkdir -p \
-  /home/$USERNAME/.config/niri \
+  /home/$USERNAME/.config/niri/niri-animation-collection-main/animations \
   /home/$USERNAME/.config/noctalia \
   /home/$USERNAME/.config/home-manager \
   /home/$USERNAME/Pictures/SpectreOS \
@@ -159,6 +159,8 @@ nixos-enter --root /mnt -- mkdir -p \
 
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl        /home/$USERNAME/.config/niri/config.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl       /home/$USERNAME/.config/niri/noctalia.kdl
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/niri-animation-collection-main/animations/crt_degauss.kdl \
+  /home/$USERNAME/.config/niri/niri-animation-collection-main/animations/crt_degauss.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/settings.json /home/$USERNAME/.config/noctalia/settings.json
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/SpectreOSWall.png /home/$USERNAME/Pictures/SpectreOS/SpectreOSWall.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/Spectreicon.png   /home/$USERNAME/.local/share/spectreos/Spectreicon.png
