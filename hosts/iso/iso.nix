@@ -56,29 +56,33 @@
     mode = "0755";
   };
 
-  # Auto-login root and launch the installer on login.
-  # The minimal installer base already sets autologinUser = "root".
-  # programs.bash.loginShellInit is sourced for all bash login shells,
-  # which is more reliable than profile.d on the minimal installer base.
+  # Auto-login root on TTY1.
+  services.getty.autologinUser = lib.mkForce "root";
+
+  # Launch the installer when root logs in.
+  # Guard on EUID=0 so the block is a no-op if loginShellInit fires for
+  # any other user.
   programs.bash.loginShellInit = ''
-    clear
-    echo ""
-    echo "  ╔══════════════════════════════════════════════════════════╗"
-    echo "  ║                                                          ║"
-    echo "  ║                  S P E C T R E  O S                     ║"
-    echo "  ║                  VM Installer  (Beta)                   ║"
-    echo "  ║                                                          ║"
-    echo "  ╚══════════════════════════════════════════════════════════╝"
-    echo ""
-    echo "  This installer will partition your disk, install SpectreOS,"
-    echo "  and reboot automatically when complete."
-    echo ""
-    echo "  SSH access is available during install:"
-    echo "    ssh root@<vm-ip>   password: spectreos"
-    echo ""
-    echo "  Press Enter to begin, or Ctrl+C to drop to a shell."
-    read -r
-    bash /etc/spectreos-install.sh
+    if [ "$EUID" = "0" ]; then
+      clear
+      echo ""
+      echo "  ╔══════════════════════════════════════════════════════════╗"
+      echo "  ║                                                          ║"
+      echo "  ║                  S P E C T R E  O S                     ║"
+      echo "  ║                  VM Installer  (Beta)                   ║"
+      echo "  ║                                                          ║"
+      echo "  ╚══════════════════════════════════════════════════════════╝"
+      echo ""
+      echo "  This installer will partition your disk, install SpectreOS,"
+      echo "  and reboot automatically when complete."
+      echo ""
+      echo "  SSH access is available during install:"
+      echo "    ssh root@<vm-ip>   password: spectreos"
+      echo ""
+      echo "  Press Enter to begin, or Ctrl+C to drop to a shell."
+      read -r
+      bash /etc/spectreos-install.sh
+    fi
   '';
 
   # ISO metadata
