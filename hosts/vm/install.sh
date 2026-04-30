@@ -208,32 +208,21 @@ nixos-enter --root /mnt -- sed -i \
   /home/$USERNAME/.config/home-manager/home.nix
 
 # home-manager switch cannot run inside nixos-enter (no systemd --user session).
-# Instead, drop a one-shot systemd user service that runs on first login and
-# removes itself after success.
-info "Writing first-boot home-manager service..."
-mkdir -p /mnt/home/$USERNAME/.config/systemd/user/default.target.wants
+# Instead, drop a flag file and a setup script that niri will launch in ghostty
+# on first login (via spawn-sh-at-startup in config.kdl).
+info "Writing first-boot home-manager setup script..."
+cp /mnt/etc/nixos/spectreos/defaults/hm-setup.sh \
+   /mnt/home/$USERNAME/.local/share/spectreos/hm-setup.sh
+chmod +x /mnt/home/$USERNAME/.local/share/spectreos/hm-setup.sh
 
-cat > /mnt/home/$USERNAME/.config/systemd/user/spectreos-hm-setup.service << EOF
-[Unit]
-Description=SpectreOS first-boot home-manager setup
-After=network-online.target
-Wants=network-online.target
+# Flag file — presence triggers the ghostty launch on first niri login.
+touch /mnt/home/$USERNAME/.hm-pending
 
-[Service]
-Type=oneshot
-ExecStart=/run/current-system/sw/bin/home-manager switch
-ExecStartPost=/bin/sh -c "systemctl --user disable spectreos-hm-setup && rm -- \$HOME/.config/systemd/user/spectreos-hm-setup.service"
-RemainAfterExit=yes
-
-[Install]
-WantedBy=default.target
-EOF
-
-ln -s ../spectreos-hm-setup.service \
-  /mnt/home/$USERNAME/.config/systemd/user/default.target.wants/spectreos-hm-setup.service
-
-# Fix ownership of files written after the initial chown (home.nix, systemd service).
+# Fix ownership of files written after the initial chown (home.nix, setup script, flag).
 nixos-enter --root /mnt -- chown -R $USERNAME:users /home/$USERNAME/.config
+nixos-enter --root /mnt -- chown $USERNAME:users \
+  /home/$USERNAME/.local/share/spectreos/hm-setup.sh \
+  /home/$USERNAME/.hm-pending
 
 echo ""
 info "Done. SpectreOS is installed."

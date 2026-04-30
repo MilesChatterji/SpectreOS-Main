@@ -278,6 +278,7 @@ in
     lshw          # Hardware info
     colord        # ICC color profile management
     home-manager  # User environment management
+    ghostty       # Default terminal — needed before home-manager runs on first boot
     # GNOME apps used standalone outside the full GNOME session
     # TODO: evaluate moving any of these to home-manager
     snapshot              # Camera
