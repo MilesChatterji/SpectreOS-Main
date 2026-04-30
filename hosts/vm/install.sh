@@ -159,19 +159,18 @@ nixos-enter --root /mnt -- mkdir -p \
 
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl        /home/$USERNAME/.config/niri/config.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl       /home/$USERNAME/.config/niri/noctalia.kdl
-nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/gui-settings.json /home/$USERNAME/.config/noctalia/gui-settings.json
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/settings.json /home/$USERNAME/.config/noctalia/settings.json
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/SpectreOSWall.png /home/$USERNAME/Pictures/SpectreOS/SpectreOSWall.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/Spectreicon.png   /home/$USERNAME/.local/share/spectreos/Spectreicon.png
 
 # Patch noctalia config with the actual branding paths for this user.
 cat > /tmp/patch_noctalia.py << PYEOF
 import json
-cfg_path = '/mnt/home/$USERNAME/.config/noctalia/gui-settings.json'
+cfg_path = '/mnt/home/$USERNAME/.config/noctalia/settings.json'
 with open(cfg_path) as f:
     cfg = json.load(f)
 cfg['wallpaper']['directory'] = '/home/$USERNAME/Pictures/SpectreOS'
 cfg['wallpaper']['useSolidColor'] = False
-cfg['wallpaper']['randomEnabled'] = False
 for w in cfg.get('bar', {}).get('widgets', {}).get('left', []):
     if w.get('id') == 'ControlCenter':
         w['customIconPath'] = '/home/$USERNAME/.local/share/spectreos/Spectreicon.png'
@@ -186,7 +185,8 @@ nixos-enter --root /mnt -- chown $USERNAME:users /home/$USERNAME
 nixos-enter --root /mnt -- chown -R $USERNAME:users \
   /home/$USERNAME/.config \
   /home/$USERNAME/Pictures \
-  /home/$USERNAME/.local
+  /home/$USERNAME/.local \
+  /home/$USERNAME/.config/systemd
 
 # --- home-manager ---
 info "Writing home-manager configuration..."
@@ -202,9 +202,33 @@ cat > /mnt/home/$USERNAME/.config/home-manager/home.nix << EOF
 }
 EOF
 
-info "Running home-manager switch (downloads user packages — this may take a while)..."
-nixos-enter --root /mnt -- runuser -l "$USERNAME" -c "home-manager switch" \
-  || info "home-manager switch did not complete — run 'home-manager switch' after first login"
+# home-manager switch cannot run inside nixos-enter (no systemd --user session).
+# Instead, drop a one-shot systemd user service that runs on first login and
+# removes itself after success.
+info "Writing first-boot home-manager service..."
+mkdir -p /mnt/home/$USERNAME/.config/systemd/user/default.target.wants
+
+cat > /mnt/home/$USERNAME/.config/systemd/user/spectreos-hm-setup.service << EOF
+[Unit]
+Description=SpectreOS first-boot home-manager setup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/run/current-system/sw/bin/home-manager switch
+ExecStartPost=/bin/sh -c "systemctl --user disable spectreos-hm-setup && rm -- \$HOME/.config/systemd/user/spectreos-hm-setup.service"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+EOF
+
+ln -s ../spectreos-hm-setup.service \
+  /mnt/home/$USERNAME/.config/systemd/user/default.target.wants/spectreos-hm-setup.service
+
+# Fix ownership of files written after the initial chown (home.nix, systemd service).
+nixos-enter --root /mnt -- chown -R $USERNAME:users /home/$USERNAME/.config
 
 echo ""
 info "Done. SpectreOS is installed."
