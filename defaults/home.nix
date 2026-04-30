@@ -65,24 +65,24 @@ in
     rustc
     cargo
     pkg-config
-    unstable.code-cursor
-    unstable.claude-code
+    # unstable.code-cursor      # Large; install manually if needed in a VM
+    # unstable.claude-code       # Large; install manually if needed in a VM
     virt-manager
 
     # Creative
-    unstable.davinci-resolve-studio
+    # unstable.davinci-resolve-studio  # GPU-dependent; not suitable for VM use
+    # alsa-plugins                     # ALSA → PipeWire bridge (only needed for DaVinci Resolve)
     unstable.darktable
     gimp3
     audacity
     easyeffects
-    alsa-plugins           # ALSA → PipeWire bridge (used by DaVinci Resolve)
 
     # Utilities
     unstable.omnissa-horizon-client
     dropbox-cli
 
     # Games
-    steam
+    # steam                      # Performance-dependent; install manually if needed in a VM
 
     # Fonts
     nerd-fonts.jetbrains-mono
