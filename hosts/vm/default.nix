@@ -28,9 +28,16 @@
 
   networking.hostName = "spectreos-vm";
 
-  # virtio_gpu provides KMS/DRM support for the QEMU virtio display device.
-  # Required for niri — it skips software renderers and needs a real KMS node.
-  boot.initrd.availableKernelModules = [ "virtio_gpu" ];
+  # Load GPU modules for common hypervisor display devices.
+  # Niri requires a real KMS node and won't start without the right one.
+  # Loading extras that don't match the hardware is harmless.
+  boot.initrd.availableKernelModules = [
+    "virtio_gpu"  # QEMU/KVM virtio display
+    "amdgpu"      # AMD virtual GPU or passthrough
+    "i915"        # Intel (Iris, integrated)
+    "vmwgfx"      # VMware Workstation/Player
+    "vboxvideo"   # VirtualBox
+  ];
 
   # QEMU guest agent — enables clean shutdown, file transfer, and guest info
   # from the hypervisor. No-op outside a QEMU/KVM guest.
