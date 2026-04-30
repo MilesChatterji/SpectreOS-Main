@@ -155,7 +155,8 @@ nixos-enter --root /mnt -- mkdir -p \
   /home/$USERNAME/.config/noctalia \
   /home/$USERNAME/.config/home-manager \
   /home/$USERNAME/Pictures/SpectreOS \
-  /home/$USERNAME/.local/share/spectreos
+  /home/$USERNAME/.local/share/spectreos \
+  /home/$USERNAME/.local/share/fonts
 
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl        /home/$USERNAME/.config/niri/config.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl       /home/$USERNAME/.config/niri/noctalia.kdl
@@ -164,6 +165,9 @@ nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/niri-animation-
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/settings.json /home/$USERNAME/.config/noctalia/settings.json
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/SpectreOSWall.png /home/$USERNAME/Pictures/SpectreOS/SpectreOSWall.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/Spectreicon.png   /home/$USERNAME/.local/share/spectreos/Spectreicon.png
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/fonts/ndot-47-inspired-by-nothing.ttf \
+  /home/$USERNAME/.local/share/fonts/ndot-47-inspired-by-nothing.ttf
+nixos-enter --root /mnt -- fc-cache /home/$USERNAME/.local/share/fonts
 
 # Patch noctalia config with the actual branding paths for this user.
 cat > /tmp/patch_noctalia.py << PYEOF
