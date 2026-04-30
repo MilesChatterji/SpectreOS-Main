@@ -270,13 +270,14 @@ in
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   environment.systemPackages = with pkgs; [
-    neovim   # TTY/recovery editor
-    git      # TTY/recovery version control
-    wget     # TTY/recovery downloads
-    fwupd    # Firmware updates
-    busybox  # System utilities
-    lshw     # Hardware info
-    colord   # ICC color profile management
+    neovim        # TTY/recovery editor
+    git           # TTY/recovery version control
+    wget          # TTY/recovery downloads
+    fwupd         # Firmware updates
+    busybox       # System utilities
+    lshw          # Hardware info
+    colord        # ICC color profile management
+    home-manager  # User environment management
     # GNOME apps used standalone outside the full GNOME session
     # TODO: evaluate moving any of these to home-manager
     snapshot              # Camera
