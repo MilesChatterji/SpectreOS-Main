@@ -148,15 +148,41 @@ NIXEOF
 info "Installing SpectreOS (this will take a while)..."
 nixos-install --no-root-passwd
 
-# --- default configs ---
-# Copy niri and noctalia default configs into the new user's home.
-# nixos-enter runs commands inside the installed system so chown resolves correctly.
+# --- default configs and branding ---
 info "Installing default configurations..."
-nixos-enter --root /mnt -- mkdir -p /home/$USERNAME/.config/niri /home/$USERNAME/.config/noctalia
-nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl /home/$USERNAME/.config/niri/config.kdl
-nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl /home/$USERNAME/.config/niri/noctalia.kdl
+nixos-enter --root /mnt -- mkdir -p \
+  /home/$USERNAME/.config/niri \
+  /home/$USERNAME/.config/noctalia \
+  /home/$USERNAME/Pictures/SpectreOS \
+  /home/$USERNAME/.local/share/spectreos
+
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl        /home/$USERNAME/.config/niri/config.kdl
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl       /home/$USERNAME/.config/niri/noctalia.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/gui-settings.json /home/$USERNAME/.config/noctalia/gui-settings.json
-nixos-enter --root /mnt -- chown -R $USERNAME:users /home/$USERNAME/.config
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/SpectreOSWall.png /home/$USERNAME/Pictures/SpectreOS/SpectreOSWall.png
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/Spectreicon.png   /home/$USERNAME/.local/share/spectreos/Spectreicon.png
+
+# Patch noctalia config with the actual branding paths for this user.
+cat > /tmp/patch_noctalia.py << PYEOF
+import json
+cfg_path = '/mnt/home/$USERNAME/.config/noctalia/gui-settings.json'
+with open(cfg_path) as f:
+    cfg = json.load(f)
+cfg['wallpaper']['directory'] = '/home/$USERNAME/Pictures/SpectreOS'
+cfg['wallpaper']['useSolidColor'] = False
+cfg['wallpaper']['randomEnabled'] = False
+for w in cfg.get('bar', {}).get('widgets', {}).get('left', []):
+    if w.get('id') == 'ControlCenter':
+        w['customIconPath'] = '/home/$USERNAME/.local/share/spectreos/Spectreicon.png'
+with open(cfg_path, 'w') as f:
+    json.dump(cfg, f, indent=4)
+PYEOF
+nix-shell -p python3 --run "python3 /tmp/patch_noctalia.py"
+
+nixos-enter --root /mnt -- chown -R $USERNAME:users \
+  /home/$USERNAME/.config \
+  /home/$USERNAME/Pictures \
+  /home/$USERNAME/.local
 
 echo ""
 info "Done. SpectreOS is installed."
