@@ -40,18 +40,14 @@ if [ "$EXIT" -eq 0 ]; then
 
     echo "  Setup complete. Your SpectreOS environment is ready."
     echo ""
-    echo "  For the best experience, a reboot is recommended."
-    echo -n "  Reboot now? [Y/n]: "
-    read -r REPLY
-    REPLY="${REPLY:-Y}"
-    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-        systemctl reboot
-    else
-        echo ""
-        echo "  You can reboot later with: systemctl reboot"
-        echo "  Press Enter to close this window."
-        read -r
-    fi
+    echo "  Rebooting in 10 seconds for the best experience..."
+    echo "  Press Ctrl+C to cancel."
+    echo ""
+    for i in 10 9 8 7 6 5 4 3 2 1; do
+        printf "  %s...\n" "$i"
+        sleep 1
+    done
+    systemctl reboot
 else
     echo "  Setup encountered an error (exit code $EXIT)."
     echo ""
