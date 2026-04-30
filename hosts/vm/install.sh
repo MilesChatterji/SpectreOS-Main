@@ -84,6 +84,8 @@ mkfs.ext4 -L nixos -F "$PART2"
 
 # --- mount ---
 info "Mounting..."
+# Wait for udev to create /dev/disk/by-label/ symlinks after mkfs
+udevadm settle
 mount /dev/disk/by-label/nixos /mnt
 mkdir -p /mnt/boot
 mount /dev/disk/by-label/BOOT /mnt/boot
