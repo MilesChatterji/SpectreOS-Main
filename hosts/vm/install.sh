@@ -179,6 +179,14 @@ with open(cfg_path, 'w') as f:
 PYEOF
 nix-shell -p python3 --run "python3 /tmp/patch_noctalia.py"
 
+# --- fix ownership before home-manager runs ---
+info "Setting ownership on home directory..."
+nixos-enter --root /mnt -- chown $USERNAME:users /home/$USERNAME
+nixos-enter --root /mnt -- chown -R $USERNAME:users \
+  /home/$USERNAME/.config \
+  /home/$USERNAME/Pictures \
+  /home/$USERNAME/.local
+
 # --- home-manager ---
 info "Writing home-manager configuration..."
 # The wrapper sets username/homeDirectory; defaults/home.nix has everything else.
@@ -196,11 +204,6 @@ EOF
 info "Running home-manager switch (downloads user packages — this may take a while)..."
 nixos-enter --root /mnt -- runuser -l "$USERNAME" -c "home-manager switch" \
   || info "home-manager switch did not complete — run 'home-manager switch' after first login"
-
-nixos-enter --root /mnt -- chown -R $USERNAME:users \
-  /home/$USERNAME/.config \
-  /home/$USERNAME/Pictures \
-  /home/$USERNAME/.local
 
 echo ""
 info "Done. SpectreOS is installed."
