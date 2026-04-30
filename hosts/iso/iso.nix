@@ -22,6 +22,10 @@
   # Match the kernel version used by the installed system.
   boot.kernelPackages = pkgs.linuxKernel.packages.linux_7_0;
 
+  # ZFS does not support kernel 7 yet; the minimal ISO base enables it by
+  # default which causes the build to fail. Disable it — we install on ext4.
+  boot.supportedFilesystems.zfs = lib.mkForce false;
+
   # Tools required by install.sh beyond what the minimal ISO provides.
   environment.systemPackages = with pkgs; [
     git      # clone SpectreOS repo during install
