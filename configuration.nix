@@ -171,6 +171,9 @@ in
   # Hosts extend this in their gpu module (e.g. enable32Bit, session vars).
   hardware.graphics.enable = true;
 
+  # dconf — required for home-manager GTK/dconf settings activation
+  programs.dconf.enable = true;
+
   # Firmware updates
   services.fwupd.enable = true;
 
