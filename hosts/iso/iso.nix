@@ -14,6 +14,33 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  # Root's shell is replaced with this installer launcher.
+  # When root logs in (on console or SSH), this script runs.
+  # Ctrl+C drops to a real bash shell; success reboots automatically.
+  installerShell = pkgs.writeShellScript "spectreos-installer-shell" ''
+    echo ""
+    echo "  ╔══════════════════════════════════════════════════════════╗"
+    echo "  ║                                                          ║"
+    echo "  ║                  S P E C T R E  O S                     ║"
+    echo "  ║                  VM Installer  (Beta)                   ║"
+    echo "  ║                                                          ║"
+    echo "  ╚══════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "  This installer will partition your disk, install SpectreOS,"
+    echo "  and reboot automatically when complete."
+    echo ""
+    echo "  SSH access is available during install:"
+    echo "    ssh root@<vm-ip>   password: spectreos"
+    echo ""
+    echo "  Press Enter to begin, or Ctrl+C to drop to a shell."
+    read -r
+    bash /etc/spectreos-install.sh
+    # Installer exited (error or cancelled) — drop to a real shell.
+    exec ${pkgs.bash}/bin/bash --login
+  '';
+in
+
 {
   imports = [
     <nixpkgs/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix>
@@ -56,34 +83,13 @@
     mode = "0755";
   };
 
+  # Replace root's shell with the installer launcher.
+  # This fires on both console auto-login and SSH — no login shell init
+  # hooks needed, no race with systemd session setup.
+  users.users.root.shell = installerShell;
+
   # Auto-login root on TTY1.
   services.getty.autologinUser = lib.mkForce "root";
-
-  # Launch the installer when root logs in.
-  # Guard on EUID=0 so the block is a no-op if loginShellInit fires for
-  # any other user.
-  programs.bash.loginShellInit = ''
-    if [ "$EUID" = "0" ]; then
-      clear
-      echo ""
-      echo "  ╔══════════════════════════════════════════════════════════╗"
-      echo "  ║                                                          ║"
-      echo "  ║                  S P E C T R E  O S                     ║"
-      echo "  ║                  VM Installer  (Beta)                   ║"
-      echo "  ║                                                          ║"
-      echo "  ╚══════════════════════════════════════════════════════════╝"
-      echo ""
-      echo "  This installer will partition your disk, install SpectreOS,"
-      echo "  and reboot automatically when complete."
-      echo ""
-      echo "  SSH access is available during install:"
-      echo "    ssh root@<vm-ip>   password: spectreos"
-      echo ""
-      echo "  Press Enter to begin, or Ctrl+C to drop to a shell."
-      read -r
-      bash /etc/spectreos-install.sh
-    fi
-  '';
 
   # ISO metadata
   isoImage.isoName = "spectreos-vm-installer.iso";
