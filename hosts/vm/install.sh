@@ -191,8 +191,7 @@ nixos-enter --root /mnt -- chown $USERNAME:users /home/$USERNAME
 nixos-enter --root /mnt -- chown -R $USERNAME:users \
   /home/$USERNAME/.config \
   /home/$USERNAME/Pictures \
-  /home/$USERNAME/.local \
-  /home/$USERNAME/.config/systemd
+  /home/$USERNAME/.local
 
 # --- home-manager ---
 info "Writing home-manager configuration..."
