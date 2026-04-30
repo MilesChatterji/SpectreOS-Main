@@ -153,6 +153,7 @@ info "Installing default configurations..."
 nixos-enter --root /mnt -- mkdir -p \
   /home/$USERNAME/.config/niri \
   /home/$USERNAME/.config/noctalia \
+  /home/$USERNAME/.config/home-manager \
   /home/$USERNAME/Pictures/SpectreOS \
   /home/$USERNAME/.local/share/spectreos
 
