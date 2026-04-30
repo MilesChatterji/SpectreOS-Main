@@ -14,8 +14,7 @@ echo ""
 
 nix-build '<nixpkgs/nixos>' \
   -A config.system.build.isoImage \
-  -I nixos-config="$SCRIPT_DIR/hosts/iso/iso.nix" \
-  -I nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos
+  -I nixos-config="$SCRIPT_DIR/hosts/iso/iso.nix"
 
 echo ""
 echo "==> Done."
