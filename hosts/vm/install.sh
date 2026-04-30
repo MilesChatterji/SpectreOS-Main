@@ -12,6 +12,10 @@
 
 set -euo pipefail
 
+# When piped through bash (curl | bash), stdin is the pipe rather than the
+# terminal. Reopen stdin from the TTY so interactive read prompts work.
+exec </dev/tty
+
 REPO_URL="https://github.com/MilesChatterji/SpectreOS-Main"
 SPECTREOS_DIR="/mnt/etc/nixos/spectreos"
 
