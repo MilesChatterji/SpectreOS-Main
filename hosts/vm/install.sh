@@ -156,7 +156,11 @@ nixos-enter --root /mnt -- mkdir -p \
   /home/$USERNAME/.config/home-manager \
   /home/$USERNAME/Pictures/SpectreOS \
   /home/$USERNAME/.local/share/spectreos \
-  /home/$USERNAME/.local/share/fonts
+  /home/$USERNAME/.local/share/fonts \
+  /home/$USERNAME/.local/state/nix/profiles
+
+nixos-enter --root /mnt -- mkdir -p /nix/var/nix/profiles/per-user/$USERNAME
+nixos-enter --root /mnt -- chown $USERNAME:users /nix/var/nix/profiles/per-user/$USERNAME
 
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/config.kdl        /home/$USERNAME/.config/niri/config.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl       /home/$USERNAME/.config/niri/noctalia.kdl
