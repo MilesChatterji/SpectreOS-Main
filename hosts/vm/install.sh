@@ -154,6 +154,7 @@ nixos-enter --root /mnt -- mkdir -p \
   /home/$USERNAME/.config/niri/niri-animation-collection-main/animations \
   /home/$USERNAME/.config/noctalia \
   /home/$USERNAME/.config/home-manager \
+  /home/$USERNAME/.config/ghostty/themes \
   /home/$USERNAME/Pictures/SpectreOS \
   /home/$USERNAME/.local/share/spectreos \
   /home/$USERNAME/.local/share/fonts \
@@ -167,6 +168,8 @@ nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/noctalia.kdl   
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/niri/niri-animation-collection-main/animations/crt_degauss.kdl \
   /home/$USERNAME/.config/niri/niri-animation-collection-main/animations/crt_degauss.kdl
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/noctalia/settings.json /home/$USERNAME/.config/noctalia/settings.json
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/ghostty/config          /home/$USERNAME/.config/ghostty/config
+nixos-enter --root /mnt -- cp /etc/nixos/spectreos/defaults/ghostty/themes/noctalia /home/$USERNAME/.config/ghostty/themes/noctalia
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/SpectreOSWall.png /home/$USERNAME/Pictures/SpectreOS/SpectreOSWall.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/branding/Spectreicon.png   /home/$USERNAME/.local/share/spectreos/Spectreicon.png
 nixos-enter --root /mnt -- cp /etc/nixos/spectreos/assets/fonts/ndot-47-inspired-by-nothing.ttf \
