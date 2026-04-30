@@ -48,7 +48,7 @@ in
     signal-desktop
     signal-cli
     discord
-    zoom-us
+    # zoom-us                    # Not practical in a VM; install manually if needed
     vlc
     thunderbird
     teams-for-linux
