@@ -199,7 +199,7 @@ in
   };
 
   # Generic hostname — overridden per host in hosts/<hostname>/default.nix.
-  networking.hostName = "spectreos";
+  networking.hostName = lib.mkDefault "spectreos";
 
   networking.networkmanager.enable = true;
 
