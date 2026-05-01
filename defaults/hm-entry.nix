@@ -3,6 +3,15 @@
 # Extra packages managed by the SpectreOS Package Manager are written
 # into this file directly as a clearly-marked block at the bottom.
 { lib, pkgs, ... }:
+let
+  # Must match the unstableSrc pin in defaults/home.nix so both resolve
+  # to the same store path and don't trigger a second download.
+  unstableSrc = builtins.fetchTarball {
+    url = "https://github.com/NixOS/nixpkgs/archive/6368eda62c9775c38ef7f714b2555a741c20c72d.tar.gz";
+    sha256 = "0lhfh8fcsaifwzs388sg6cy0j2galj8ssfmk6wb0pc8alwdpi868";
+  };
+  unstable = import unstableSrc { config.allowUnfree = true; };
+in
 {
   imports = [ /etc/nixos/spectreos/defaults/home.nix ];
   home.username = "__USERNAME__";
