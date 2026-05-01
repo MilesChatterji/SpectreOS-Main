@@ -15,6 +15,15 @@ const ES_GENERATION: u32 = 47;
 // SpectreOS is based on NixOS 25.11. Update when the base NixOS version changes.
 const NIXOS_VERSION: &str = "25.11";
 
+const UPDATER_MARKER: &str =
+    "# SpectreOS Updater managed packages — do not edit this block manually";
+const UPDATER_END_MARKER: &str = "# END SpectreOS Updater";
+
+fn home_nix_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    format!("{}/.config/home-manager/home.nix", home)
+}
+
 // HTTP call to the NixOS Elasticsearch backend — no local Nix evaluation, instant results.
 // Requires internet, which is consistent with needing internet to actually install packages.
 pub fn search(query: &str) -> Vec<Package> {
@@ -76,22 +85,29 @@ fn json_escape(s: &str) -> String {
         .collect()
 }
 
+/// Packages in the updater-managed block of home.nix (can be removed via the updater).
 pub fn read_installed_packages() -> Vec<String> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let path = format!("{}/.config/spectreos/extra-packages.nix", home);
-    let content = std::fs::read_to_string(path).unwrap_or_default();
-
+    let content = std::fs::read_to_string(home_nix_path()).unwrap_or_default();
+    let mut in_block = false;
     let mut in_list = false;
     let mut packages = Vec::new();
+
     for line in content.lines() {
         let t = line.trim();
-        if t.contains("home.packages = with pkgs; [") {
+        if t.starts_with(UPDATER_MARKER) {
+            in_block = true;
+            continue;
+        }
+        if t.starts_with(UPDATER_END_MARKER) {
+            break;
+        }
+        if in_block && !in_list && t.starts_with("home.packages") && t.contains('[') {
             in_list = true;
             continue;
         }
-        if in_list {
-            if t.starts_with(']') { break; }
-            if !t.is_empty() {
+        if in_block && in_list {
+            if t.starts_with(']') { in_list = false; continue; }
+            if !t.is_empty() && !t.starts_with('#') {
                 packages.push(t.to_string());
             }
         }
@@ -99,12 +115,40 @@ pub fn read_installed_packages() -> Vec<String> {
     packages
 }
 
+/// All packages from every home.packages block in home.nix (for search ✓ indicators).
+/// Uses the last component of dotted names so e.g. unstable.spotify → spotify.
+pub fn read_all_home_packages() -> Vec<String> {
+    let content = std::fs::read_to_string(home_nix_path()).unwrap_or_default();
+    let mut in_list = false;
+    let mut packages = Vec::new();
+
+    for line in content.lines() {
+        let t = line.trim();
+        if !in_list && t.starts_with("home.packages") && t.contains("with pkgs") && t.contains('[') {
+            in_list = true;
+            continue;
+        }
+        if in_list {
+            if t.starts_with(']') { in_list = false; continue; }
+            if t.is_empty() || t.starts_with('#') { continue; }
+            let token = t.split_whitespace().next().unwrap_or("");
+            if !token.is_empty() {
+                let pname = token.split('.').last().unwrap_or(token);
+                packages.push(pname.to_string());
+            }
+        }
+    }
+    packages
+}
+
+/// Write the updater block into home.nix, replacing any existing block or appending before `}`.
+/// Backs up home.nix to home.nix.updater-bak first.
 pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
-    let home = std::env::var("HOME").map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, e.to_string())
-    })?;
-    let config_dir = format!("{}/.config/spectreos", home);
-    std::fs::create_dir_all(&config_dir)?;
+    let path = home_nix_path();
+    let content = std::fs::read_to_string(&path)?;
+
+    // Safety backup before every write.
+    let _ = std::fs::copy(&path, format!("{}.updater-bak", path));
 
     let pkg_lines: String = packages
         .iter()
@@ -112,36 +156,87 @@ pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let content = format!(
-        "# Managed by SpectreOS Updater — do not edit manually\n\
-         {{ pkgs, ... }}: {{\n\
-           home.packages = with pkgs; [\n\
-         {}\n\
-           ];\n\
-         }}\n",
-        pkg_lines
-    );
+    let new_block = if packages.is_empty() {
+        format!("  {}\n  {}", UPDATER_MARKER, UPDATER_END_MARKER)
+    } else {
+        format!(
+            "  {}\n  home.packages = with pkgs; [\n{}\n  ];\n  {}",
+            UPDATER_MARKER, pkg_lines, UPDATER_END_MARKER
+        )
+    };
 
-    std::fs::write(format!("{}/extra-packages.nix", config_dir), content)
+    let new_content = if content.lines().any(|l| l.trim().starts_with(UPDATER_MARKER)) {
+        replace_updater_block(&content, &new_block)
+    } else {
+        insert_before_last_brace(&content, &new_block)
+    };
+
+    std::fs::write(&path, new_content)
+}
+
+fn replace_updater_block(content: &str, new_block: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines.iter().position(|l| l.trim().starts_with(UPDATER_MARKER));
+    let end = lines.iter().position(|l| l.trim().starts_with(UPDATER_END_MARKER));
+
+    match (start, end) {
+        (Some(s), Some(e)) => {
+            let mut result: Vec<&str> = lines[..s].to_vec();
+            result.extend(new_block.lines());
+            result.extend_from_slice(&lines[e + 1..]);
+            let joined = result.join("\n");
+            if content.ends_with('\n') { joined + "\n" } else { joined }
+        }
+        _ => format!("{}\n{}\n", content.trim_end_matches('\n'), new_block),
+    }
+}
+
+fn insert_before_last_brace(content: &str, new_block: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    match lines.iter().rposition(|l| l.trim() == "}") {
+        Some(idx) => {
+            let mut result: Vec<&str> = lines[..idx].to_vec();
+            result.push("");
+            result.extend(new_block.lines());
+            result.push(lines[idx]);
+            result.join("\n") + "\n"
+        }
+        None => format!("{}\n{}\n", content.trim_end_matches('\n'), new_block),
+    }
 }
 
 pub fn run_home_manager() -> Result<(), String> {
-    let status = std::process::Command::new("home-manager")
-        .args([
-            "switch",
-            "-b", "backup",
-            "--option", "max-jobs", "2",
-            "--option", "cores", "2",
-        ])
-        .status()
-        .map_err(|e| e.to_string())?;
+    let home = std::env::var("HOME").unwrap_or_default();
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    // Prepend common nix profile locations in case the GUI was launched without a full login shell.
+    let extended_path = format!(
+        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
+        home, existing_path
+    );
 
-    if status.success() {
+    let output = std::process::Command::new("home-manager")
+        .env("PATH", &extended_path)
+        .args(["switch", "-b", "backup", "--option", "max-jobs", "2", "--option", "cores", "2"])
+        .output()
+        .map_err(|e| format!("failed to launch home-manager: {}", e))?;
+
+    if output.status.success() {
         Ok(())
     } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
         Err(format!(
-            "home-manager exited with code {}",
-            status.code().unwrap_or(-1)
+            "home-manager exited with code {}{}",
+            output.status.code().unwrap_or(-1),
+            if !tail.is_empty() { format!("\n{}", tail) } else { String::new() }
         ))
     }
 }

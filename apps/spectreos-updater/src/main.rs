@@ -14,7 +14,8 @@ use nix_ops::Package;
 const APP_ID: &str = "com.spectreOS.Updater";
 
 struct State {
-    installed: Vec<String>,
+    installed: Vec<String>,      // updater-managed block in home.nix (shown in managed list)
+    all_installed: Vec<String>,  // all home.packages in home.nix (for ✓ in search results)
     staged_add: HashMap<String, Package>,
     staged_remove: HashSet<String>,
 }
@@ -51,6 +52,7 @@ fn main() -> glib::ExitCode {
 fn build_ui(app: &Application) {
     let state: Rc<RefCell<State>> = Rc::new(RefCell::new(State {
         installed: nix_ops::read_installed_packages(),
+        all_installed: nix_ops::read_all_home_packages(),
         staged_add: HashMap::new(),
         staged_remove: HashSet::new(),
     }));
@@ -174,11 +176,11 @@ fn build_ui(app: &Application) {
 
         search.connect_search_changed(move |entry| {
             let query = entry.text().to_string();
-            if query.trim().is_empty() { return; }
-
             while let Some(child) = results_list.first_child() {
                 results_list.remove(&child);
             }
+            if query.trim().is_empty() { return; }
+
             let loading = ListBoxRow::new();
             loading.set_child(Some(&Label::new(Some("Searching…"))));
             results_list.append(&loading);
@@ -216,6 +218,8 @@ fn build_ui(app: &Application) {
         let apply_btn_ref = apply_btn.clone();
         let staged_list = staged_list.clone();
         let installed_list = installed_list.clone();
+        let search = search.clone();
+        let results_list = results_list.clone();
 
         apply_btn.connect_clicked(move |btn| {
             if !state.borrow().needs_apply() { return; }
@@ -239,6 +243,8 @@ fn build_ui(app: &Application) {
             let state2 = state.clone();
             let staged2 = staged_list.clone();
             let installed2 = installed_list.clone();
+            let search2 = search.clone();
+            let results2 = results_list.clone();
 
             glib::MainContext::default().spawn_local(async move {
                 if let Ok(result) = receiver.recv().await {
@@ -250,13 +256,17 @@ fn build_ui(app: &Application) {
                             {
                                 let mut s = state2.borrow_mut();
                                 s.installed = final_packages.clone();
+                                s.all_installed = nix_ops::read_all_home_packages();
                                 s.staged_add.clear();
                                 s.staged_remove.clear();
                             }
 
+                            // Clear staged list
                             while let Some(child) = staged2.first_child() {
                                 staged2.remove(&child);
                             }
+
+                            // Rebuild managed list
                             while let Some(child) = installed2.first_child() {
                                 installed2.remove(&child);
                             }
@@ -266,6 +276,13 @@ fn build_ui(app: &Application) {
                                 );
                                 installed2.append(&row);
                             }
+
+                            // Clear search so re-search shows fresh ✓ marks
+                            search2.set_text("");
+                            while let Some(child) = results2.first_child() {
+                                results2.remove(&child);
+                            }
+
                             btn2.set_sensitive(false);
                         }
                         Err(ref e) => {
@@ -311,8 +328,9 @@ fn make_result_row(
 
     let is_installed = {
         let s = state.borrow();
-        s.installed.contains(&pkg.pname) && !s.staged_remove.contains(&pkg.pname)
+        s.all_installed.contains(&pkg.pname) && !s.staged_remove.contains(&pkg.pname)
     };
+    let is_staged = state.borrow().staged_add.contains_key(&pkg.pname);
 
     if is_installed {
         let check = Button::with_label("✓");
@@ -321,8 +339,12 @@ fn make_result_row(
         check.add_css_class("suggested-action");
         hbox.append(&check);
     } else {
-        let add_btn = Button::with_label("+");
+        // Start as "+" or "–" depending on whether it's already staged
+        let add_btn = Button::with_label(if is_staged { "–" } else { "+" });
         add_btn.set_valign(Align::Center);
+        if is_staged {
+            add_btn.add_css_class("suggested-action");
+        }
 
         {
             let pname = pkg.pname.clone();
@@ -331,14 +353,30 @@ fn make_result_row(
             let staged_list = staged_list.clone();
             let apply_btn = apply_btn.clone();
 
-            add_btn.connect_clicked(move |_| {
-                if state.borrow().staged_add.contains_key(&pname) { return; }
-                state.borrow_mut().staged_add.insert(pname.clone(), pkg.clone());
-                let staged_row = make_staged_row(
-                    pname.clone(), state.clone(), staged_list.clone(), apply_btn.clone(),
-                );
-                staged_list.append(&staged_row);
-                apply_btn.set_sensitive(true);
+            add_btn.connect_clicked(move |btn| {
+                let currently_staged = state.borrow().staged_add.contains_key(&pname);
+                if currently_staged {
+                    // Unstage: remove from state and remove the staged row
+                    state.borrow_mut().staged_add.remove(&pname);
+                    remove_staged_row_by_name(&staged_list, &pname);
+                    btn.set_label("+");
+                    btn.remove_css_class("suggested-action");
+                    if !state.borrow().needs_apply() {
+                        apply_btn.set_sensitive(false);
+                    }
+                } else {
+                    // Stage it
+                    if state.borrow().staged_add.contains_key(&pname) { return; }
+                    state.borrow_mut().staged_add.insert(pname.clone(), pkg.clone());
+                    let staged_row = make_staged_row(
+                        pname.clone(), state.clone(), staged_list.clone(),
+                        apply_btn.clone(), btn.clone(),
+                    );
+                    staged_list.append(&staged_row);
+                    btn.set_label("–");
+                    btn.add_css_class("suggested-action");
+                    apply_btn.set_sensitive(true);
+                }
             });
         }
 
@@ -354,8 +392,11 @@ fn make_staged_row(
     state: Rc<RefCell<State>>,
     staged_list: ListBox,
     apply_btn: Button,
+    add_btn: Button,
 ) -> ListBoxRow {
     let row = ListBoxRow::new();
+    row.set_widget_name(&pname);
+
     let hbox = GtkBox::new(Orientation::Horizontal, 8);
     hbox.set_margin_top(4);
     hbox.set_margin_bottom(4);
@@ -381,6 +422,9 @@ fn make_staged_row(
         rm.connect_clicked(move |_| {
             state.borrow_mut().staged_add.remove(&pname);
             staged_list.remove(&row);
+            // Reset the corresponding search result button if it's still visible
+            add_btn.set_label("+");
+            add_btn.remove_css_class("suggested-action");
             if !state.borrow().needs_apply() {
                 apply_btn.set_sensitive(false);
             }
@@ -431,4 +475,16 @@ fn make_installed_row(
     hbox.append(&rm);
     row.set_child(Some(&hbox));
     row
+}
+
+fn remove_staged_row_by_name(staged_list: &ListBox, pname: &str) {
+    let mut child = staged_list.first_child();
+    while let Some(widget) = child {
+        let next = widget.next_sibling();
+        if widget.widget_name() == pname {
+            staged_list.remove(&widget);
+            break;
+        }
+        child = next;
+    }
 }
