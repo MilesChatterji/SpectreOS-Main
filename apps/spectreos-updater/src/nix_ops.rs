@@ -12,15 +12,23 @@ pub struct Package {
 const ES_SERVER: &str = "https://search.nixos.org/backend";
 const ES_AUTH_B64: &str = "YVdWU0FMWHBadjpYOGdQSG56TDUyd0ZFZWt1eHNmUTljU2g=";
 // Generation prefix increments when NixOS reindexes. Check the URL in dev tools if results stop.
-// Confirmed same generation index works for both stable and unstable.
+// Confirmed generation 47 serves both the stable and unstable indices.
 const ES_GENERATION: u32 = 47;
 // SpectreOS is based on NixOS 25.11. Update when the base NixOS version changes.
 const NIXOS_VERSION: &str = "25.11";
 const NIXOS_UNSTABLE_VERSION: &str = "unstable";
 
-const UPDATER_MARKER: &str =
+// Inline markers — live INSIDE the existing home.packages = with pkgs; [...] block.
+// Using a second home.packages = ... definition in the same attrset is a Nix error, so
+// we add package names only (no attribute wrapper) and bracket them with comments.
+const UPDATER_INLINE_START: &str =
+    "# SpectreOS Updater managed packages — do not edit below";
+const UPDATER_END: &str = "# END SpectreOS Updater";
+
+// Legacy marker — used in the old separate-block format that wrote its own home.packages = ...
+// Detected so we can migrate to the inline format on the next apply.
+const UPDATER_LEGACY_START: &str =
     "# SpectreOS Updater managed packages — do not edit this block manually";
-const UPDATER_END_MARKER: &str = "# END SpectreOS Updater";
 
 fn home_nix_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -39,12 +47,12 @@ pub fn search(query: &str, include_unstable: bool) -> Vec<Package> {
 
     let unstable = search_channel(query, NIXOS_UNSTABLE_VERSION, true);
 
-    // Unstable results take precedence — build a set of pnames already covered by unstable.
+    // Unstable results take precedence — filter out stable entries with the same pname.
     let unstable_pnames: std::collections::HashSet<&str> =
         unstable.iter().map(|p| p.pname.as_str()).collect();
     stable.retain(|p| !unstable_pnames.contains(p.pname.as_str()));
 
-    // Unstable first so the newer versions appear at the top.
+    // Unstable first so newer versions surface at the top.
     let mut merged = unstable;
     merged.extend(stable);
     merged
@@ -109,22 +117,39 @@ fn json_escape(s: &str) -> String {
         .collect()
 }
 
-/// Packages in the updater-managed block of home.nix (can be removed via the updater).
+/// Packages managed by the updater (inline section inside home.packages in home.nix).
+/// Falls back to the legacy separate-block format for migration reads.
 pub fn read_installed_packages() -> Vec<String> {
     let content = std::fs::read_to_string(home_nix_path()).unwrap_or_default();
+    if content.lines().any(|l| l.trim().starts_with(UPDATER_INLINE_START)) {
+        read_inline_packages(&content)
+    } else {
+        read_legacy_packages(&content)
+    }
+}
+
+fn read_inline_packages(content: &str) -> Vec<String> {
+    let mut in_section = false;
+    let mut packages = Vec::new();
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with(UPDATER_INLINE_START) { in_section = true; continue; }
+        if t.starts_with(UPDATER_END) { break; }
+        if in_section && !t.is_empty() && !t.starts_with('#') {
+            packages.push(t.to_string());
+        }
+    }
+    packages
+}
+
+fn read_legacy_packages(content: &str) -> Vec<String> {
     let mut in_block = false;
     let mut in_list = false;
     let mut packages = Vec::new();
-
     for line in content.lines() {
         let t = line.trim();
-        if t.starts_with(UPDATER_MARKER) {
-            in_block = true;
-            continue;
-        }
-        if t.starts_with(UPDATER_END_MARKER) {
-            break;
-        }
+        if t.starts_with(UPDATER_LEGACY_START) { in_block = true; continue; }
+        if in_block && t.starts_with(UPDATER_END) { break; }
         if in_block && !in_list && t.starts_with("home.packages") && t.contains('[') {
             in_list = true;
             continue;
@@ -165,12 +190,14 @@ pub fn read_all_home_packages() -> Vec<String> {
     packages
 }
 
-/// Write the updater block into home.nix, replacing any existing block or appending before `}`.
-/// Backs up home.nix to home.nix.updater-bak first.
+/// Write the updater's packages as an inline section inside the existing home.packages block.
+///
+/// If the legacy separate-block format is detected it is removed first (migration), then the
+/// packages are written inline. This avoids the "attribute 'home' already defined" Nix error
+/// caused by having two `home.packages = ...` definitions in the same attrset.
 pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
     let path = home_nix_path();
     let content = std::fs::read_to_string(&path)?;
-
     let _ = std::fs::copy(&path, format!("{}.updater-bak", path));
 
     let pkg_lines: String = packages
@@ -179,38 +206,116 @@ pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let new_block = if packages.is_empty() {
-        format!("  {}\n  {}", UPDATER_MARKER, UPDATER_END_MARKER)
+    // Inline section: just package names (no home.packages = wrapper), indented to match.
+    let inline_section = if packages.is_empty() {
+        format!("    {}\n    {}", UPDATER_INLINE_START, UPDATER_END)
     } else {
-        format!(
-            "  {}\n  home.packages = with pkgs; [\n{}\n  ];\n  {}",
-            UPDATER_MARKER, pkg_lines, UPDATER_END_MARKER
-        )
+        format!("    {}\n{}\n    {}", UPDATER_INLINE_START, pkg_lines, UPDATER_END)
     };
 
-    let new_content = if content.lines().any(|l| l.trim().starts_with(UPDATER_MARKER)) {
-        replace_updater_block(&content, &new_block)
+    // Step 1: migrate away from legacy separate block if present.
+    let has_legacy = content.lines().any(|l| l.trim().starts_with(UPDATER_LEGACY_START));
+    let content = if has_legacy {
+        remove_legacy_block(&content)
     } else {
-        insert_before_last_brace(&content, &new_block)
+        content
+    };
+
+    // Step 2: insert or replace the inline section.
+    let new_content = if content.lines().any(|l| l.trim().starts_with(UPDATER_INLINE_START)) {
+        replace_inline_section(&content, &inline_section)
+    } else {
+        insert_inline_in_home_packages(&content, &inline_section)
     };
 
     std::fs::write(&path, new_content)
 }
 
-fn replace_updater_block(content: &str, new_block: &str) -> String {
+/// Remove the legacy standalone updater block (the one that had its own `home.packages = ...`).
+fn remove_legacy_block(content: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
-    let start = lines.iter().position(|l| l.trim().starts_with(UPDATER_MARKER));
-    let end = lines.iter().position(|l| l.trim().starts_with(UPDATER_END_MARKER));
+    let start = match lines.iter().position(|l| l.trim().starts_with(UPDATER_LEGACY_START)) {
+        Some(i) => i,
+        None => return content.to_string(),
+    };
+    let end = match lines.iter().skip(start).position(|l| l.trim().starts_with(UPDATER_END)) {
+        Some(i) => start + i,
+        None => return content.to_string(),
+    };
+    // Also consume a leading blank line before the block.
+    let trim_start = if start > 0 && lines[start - 1].trim().is_empty() {
+        start - 1
+    } else {
+        start
+    };
+    let mut result: Vec<&str> = lines[..trim_start].to_vec();
+    result.extend_from_slice(&lines[end + 1..]);
+    let joined = result.join("\n");
+    if content.ends_with('\n') { joined + "\n" } else { joined }
+}
 
-    match (start, end) {
-        (Some(s), Some(e)) => {
-            let mut result: Vec<&str> = lines[..s].to_vec();
-            result.extend(new_block.lines());
-            result.extend_from_slice(&lines[e + 1..]);
-            let joined = result.join("\n");
-            if content.ends_with('\n') { joined + "\n" } else { joined }
+/// Replace an existing inline section (start..=end markers) with new content.
+fn replace_inline_section(content: &str, inline_section: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let start = match lines.iter().position(|l| l.trim().starts_with(UPDATER_INLINE_START)) {
+        Some(i) => i,
+        None => return content.to_string(),
+    };
+    let end = match lines.iter().skip(start).position(|l| l.trim().starts_with(UPDATER_END)) {
+        Some(i) => start + i,
+        None => return content.to_string(),
+    };
+    let mut result: Vec<&str> = lines[..start].to_vec();
+    result.extend(inline_section.lines());
+    result.extend_from_slice(&lines[end + 1..]);
+    let joined = result.join("\n");
+    if content.ends_with('\n') { joined + "\n" } else { joined }
+}
+
+/// Insert the inline section before the closing `];` of the first home.packages block.
+/// If no home.packages block exists, creates one (handles the VM hm-entry.nix case).
+fn insert_inline_in_home_packages(content: &str, inline_section: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+
+    let pkg_start = lines.iter().position(|l| {
+        let t = l.trim();
+        t.starts_with("home.packages") && t.contains("with pkgs") && t.contains('[')
+    });
+
+    match pkg_start {
+        None => {
+            // No home.packages block — create one containing just the updater section.
+            let new_block = format!(
+                "  home.packages = with pkgs; [\n{}\n  ];",
+                inline_section
+            );
+            insert_before_last_brace(content, &new_block)
         }
-        _ => format!("{}\n{}\n", content.trim_end_matches('\n'), new_block),
+        Some(start_idx) => {
+            // Locate the closing `];` by tracking bracket depth.
+            let mut depth = 1i32;
+            let mut close_idx = None;
+            for (i, line) in lines.iter().enumerate().skip(start_idx + 1) {
+                let t = line.trim();
+                depth += t.chars().filter(|&c| c == '[').count() as i32;
+                depth -= t.chars().filter(|&c| c == ']').count() as i32;
+                if depth <= 0 {
+                    close_idx = Some(i);
+                    break;
+                }
+            }
+            match close_idx {
+                None => content.to_string(),
+                Some(end_idx) => {
+                    let mut result: Vec<&str> = lines[..end_idx].to_vec();
+                    result.push("");
+                    result.extend(inline_section.lines());
+                    result.extend_from_slice(&lines[end_idx..]);
+                    let joined = result.join("\n");
+                    if content.ends_with('\n') { joined + "\n" } else { joined }
+                }
+            }
+        }
     }
 }
 
