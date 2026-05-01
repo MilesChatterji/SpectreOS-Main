@@ -3,6 +3,7 @@ pub struct Package {
     pub pname: String,
     pub version: String,
     pub description: String,
+    pub is_unstable: bool,
 }
 
 // Public read-only credentials used by search.nixos.org (proxied via Netlify).
@@ -11,9 +12,11 @@ pub struct Package {
 const ES_SERVER: &str = "https://search.nixos.org/backend";
 const ES_AUTH_B64: &str = "YVdWU0FMWHBadjpYOGdQSG56TDUyd0ZFZWt1eHNmUTljU2g=";
 // Generation prefix increments when NixOS reindexes. Check the URL in dev tools if results stop.
+// Confirmed same generation index works for both stable and unstable.
 const ES_GENERATION: u32 = 47;
 // SpectreOS is based on NixOS 25.11. Update when the base NixOS version changes.
 const NIXOS_VERSION: &str = "25.11";
+const NIXOS_UNSTABLE_VERSION: &str = "unstable";
 
 const UPDATER_MARKER: &str =
     "# SpectreOS Updater managed packages — do not edit this block manually";
@@ -26,8 +29,29 @@ fn home_nix_path() -> String {
 
 // HTTP call to the NixOS Elasticsearch backend — no local Nix evaluation, instant results.
 // Requires internet, which is consistent with needing internet to actually install packages.
-pub fn search(query: &str) -> Vec<Package> {
-    let url = format!("{}/latest-{}-nixos-{}/_search", ES_SERVER, ES_GENERATION, NIXOS_VERSION);
+// When include_unstable is true, searches both channels and merges; unstable wins on pname clash.
+pub fn search(query: &str, include_unstable: bool) -> Vec<Package> {
+    let mut stable = search_channel(query, NIXOS_VERSION, false);
+
+    if !include_unstable {
+        return stable;
+    }
+
+    let unstable = search_channel(query, NIXOS_UNSTABLE_VERSION, true);
+
+    // Unstable results take precedence — build a set of pnames already covered by unstable.
+    let unstable_pnames: std::collections::HashSet<&str> =
+        unstable.iter().map(|p| p.pname.as_str()).collect();
+    stable.retain(|p| !unstable_pnames.contains(p.pname.as_str()));
+
+    // Unstable first so the newer versions appear at the top.
+    let mut merged = unstable;
+    merged.extend(stable);
+    merged
+}
+
+fn search_channel(query: &str, version: &str, is_unstable: bool) -> Vec<Package> {
+    let url = format!("{}/latest-{}-nixos-{}/_search", ES_SERVER, ES_GENERATION, version);
     let q = json_escape(query);
     let body = format!(
         r#"{{"from":0,"size":50,"query":{{"bool":{{"should":[{{"match":{{"package_pname":{{"query":"{q}","boost":3}}}}}},{{"match":{{"package_description":{{"query":"{q}","boost":1}}}}}},{{"match":{{"package_attr_name":{{"query":"{q}"}}}}}}],"minimum_should_match":1}}}}}}"#,
@@ -65,7 +89,7 @@ pub fn search(query: &str) -> Vec<Package> {
                     let pname = src["package_pname"].as_str()?.to_string();
                     let version = src["package_pversion"].as_str().unwrap_or("").to_string();
                     let description = src["package_description"].as_str().unwrap_or("").to_string();
-                    Some(Package { pname, version, description })
+                    Some(Package { pname, version, description, is_unstable })
                 })
                 .collect()
         })
@@ -147,7 +171,6 @@ pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
     let path = home_nix_path();
     let content = std::fs::read_to_string(&path)?;
 
-    // Safety backup before every write.
     let _ = std::fs::copy(&path, format!("{}.updater-bak", path));
 
     let pkg_lines: String = packages

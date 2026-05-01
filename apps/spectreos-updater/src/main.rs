@@ -1,6 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Button, Label, ListBox,
+    Align, Application, ApplicationWindow, Box as GtkBox, Button, CheckButton, Label, ListBox,
     ListBoxRow, Orientation, PolicyType, ScrolledWindow, SearchEntry, SelectionMode,
     Separator,
 };
@@ -31,9 +31,14 @@ impl State {
             .filter(|p| !self.staged_remove.contains(*p))
             .cloned()
             .collect();
-        for pname in self.staged_add.keys() {
-            if !pkgs.contains(pname) {
-                pkgs.push(pname.clone());
+        for (pname, pkg) in &self.staged_add {
+            let install_name = if pkg.is_unstable {
+                format!("unstable.{}", pname)
+            } else {
+                pname.clone()
+            };
+            if !pkgs.contains(&install_name) {
+                pkgs.push(install_name);
             }
         }
         pkgs.sort();
@@ -75,9 +80,15 @@ fn build_ui(app: &Application) {
     title.set_halign(Align::Start);
     root.append(&title);
 
+    let search_row = GtkBox::new(Orientation::Horizontal, 8);
     let search = SearchEntry::new();
+    search.set_hexpand(true);
     search.set_placeholder_text(Some("Search nixpkgs — e.g. helix, micro, obsidian"));
-    root.append(&search);
+    search_row.append(&search);
+    let unstable_check = CheckButton::with_label("Include unstable");
+    unstable_check.set_valign(Align::Center);
+    search_row.append(&unstable_check);
+    root.append(&search_row);
 
     let results_label = Label::new(Some("Results"));
     results_label.set_halign(Align::Start);
@@ -167,15 +178,17 @@ fn build_ui(app: &Application) {
         quit_btn.connect_clicked(move |_| window.close());
     }
 
-    // Search
-    {
+    // Search — shared trigger used by both the SearchEntry and the unstable checkbox.
+    let trigger_search = {
         let results_list = results_list.clone();
         let staged_list = staged_list.clone();
         let state = state.clone();
         let apply_btn = apply_btn.clone();
+        let search = search.clone();
+        let unstable_check = unstable_check.clone();
 
-        search.connect_search_changed(move |entry| {
-            let query = entry.text().to_string();
+        Rc::new(move || {
+            let query = search.text().to_string();
             while let Some(child) = results_list.first_child() {
                 results_list.remove(&child);
             }
@@ -185,9 +198,10 @@ fn build_ui(app: &Application) {
             loading.set_child(Some(&Label::new(Some("Searching…"))));
             results_list.append(&loading);
 
+            let include_unstable = unstable_check.is_active();
             let (sender, receiver) = async_channel::bounded::<Vec<Package>>(1);
             std::thread::spawn(move || {
-                let _ = sender.send_blocking(nix_ops::search(&query));
+                let _ = sender.send_blocking(nix_ops::search(&query, include_unstable));
             });
 
             let results_list2 = results_list.clone();
@@ -208,7 +222,16 @@ fn build_ui(app: &Application) {
                     }
                 }
             });
-        });
+        })
+    };
+
+    {
+        let trigger = trigger_search.clone();
+        search.connect_search_changed(move |_| trigger());
+    }
+    {
+        let trigger = trigger_search.clone();
+        unstable_check.connect_toggled(move |_| trigger());
     }
 
     // Apply
@@ -312,7 +335,12 @@ fn make_result_row(
     let info = GtkBox::new(Orientation::Vertical, 2);
     info.set_hexpand(true);
 
-    let name_label = Label::new(Some(&format!("{} ({})", pkg.pname, pkg.version)));
+    let version_str = if pkg.is_unstable {
+        format!("{} · unstable", pkg.version)
+    } else {
+        pkg.version.clone()
+    };
+    let name_label = Label::new(Some(&format!("{} ({})", pkg.pname, version_str)));
     name_label.set_halign(Align::Start);
     info.append(&name_label);
 
@@ -328,7 +356,9 @@ fn make_result_row(
 
     let is_installed = {
         let s = state.borrow();
-        s.all_installed.contains(&pkg.pname) && !s.staged_remove.contains(&pkg.pname)
+        s.all_installed.contains(&pkg.pname)
+            && !s.staged_remove.contains(&pkg.pname)
+            && !s.staged_remove.contains(&format!("unstable.{}", pkg.pname))
     };
     let is_staged = state.borrow().staged_add.contains_key(&pkg.pname);
 
