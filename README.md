@@ -127,4 +127,4 @@ The PX13 host (`hosts/px13/`) is the primary development and daily-driver machin
 
 ## License
 
-TBD.
+GPLv3
