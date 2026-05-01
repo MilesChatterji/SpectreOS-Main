@@ -273,6 +273,7 @@ in
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   environment.systemPackages = with pkgs; [
+    (pkgs.callPackage ./apps/spectreos-updater/package.nix {})
     neovim        # TTY/recovery editor
     git           # TTY/recovery version control
     wget          # TTY/recovery downloads

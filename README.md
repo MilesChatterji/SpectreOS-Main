@@ -4,7 +4,7 @@ An opinionated NixOS derivative targeting people who want the power of NixOS wit
 
 Built on NixOS 25.11 with kernel 7.0, the [Niri](https://github.com/YaLTeR/niri) Wayland compositor, and [Noctalia Shell](https://github.com/bedsteler20/noctalia).
 
-> **Status: Beta.** The installer and VM ISO are working. A clean install produces a complete SpectreOS experience — niri compositor, noctalia shell, ghostty terminal, home-manager user environment, and SpectreOS branding — on a fresh QEMU/KVM VM. The next development priority is a GUI application manager and updater.
+> **Status: Beta.** The installer and VM ISO are working. A clean install produces a complete SpectreOS experience — niri compositor, noctalia shell, ghostty terminal, home-manager user environment, and SpectreOS branding — on a fresh QEMU/KVM VM. A GUI package manager (`spectreos-updater`) is now included and lets users search, install, and remove packages without touching the terminal.
 
 ---
 
@@ -47,6 +47,8 @@ defaults/
   home.nix                 # Default home-manager configuration
   hm-entry.nix             # home-manager entry point template (username substituted at install)
   hm-setup.sh              # First-boot home-manager setup script (runs via ghostty on first login)
+apps/
+  spectreos-updater/       # GTK4 + Rust GUI package manager (searches nixpkgs, manages home-manager packages)
 assets/
   branding/                # Wallpaper, icon, spectre.txt fastfetch logo
   fonts/                   # NDOT 47 font
@@ -100,6 +102,7 @@ After install and reboot:
 - home-manager installs user packages (Firefox, Spotify, Brave, development tools, etc.)
 - Wallpaper and full GTK theming applied on completion
 - System reboots into the finished environment
+- SpectreOS Package Manager available in the app launcher for installing additional software
 
 ---
 
@@ -118,7 +121,7 @@ The PX13 host (`hosts/px13/`) is the primary development and daily-driver machin
 ## Roadmap
 
 1. **✅ VM installer + ISO** — working. Automated install, first-boot home-manager setup, SpectreOS branding.
-2. **🔄 GUI application manager** — in progress. GTK4 + Rust app for searching nixpkgs and managing home-manager packages. System update tab (requiring admin password) to follow.
+2. **✅ GUI application manager** — shipped. `spectreos-updater`: GTK4 + Rust, searches nixpkgs via the NixOS Elasticsearch API, installs/removes packages via home-manager. System update tab (requiring admin password) to follow.
 3. **ISO polish** — SpectreOS branding in boot menu, improved first-boot UX, pre-built VM image.
 4. **Noctalia fork** — fork noctalia-shell, contribute SpectreOS-specific widgets, keep upstream merges clean.
 5. **Flake ISO** — ISO build config becomes a flake pinning the noctalia fork. Installed system stays traditional NixOS.
