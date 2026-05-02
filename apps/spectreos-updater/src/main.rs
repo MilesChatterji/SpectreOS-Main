@@ -25,6 +25,11 @@ impl State {
         !self.staged_add.is_empty() || !self.staged_remove.is_empty()
     }
 
+    fn is_managed(&self, pname: &str) -> bool {
+        self.installed.contains(&pname.to_string())
+            || self.installed.contains(&format!("unstable.{}", pname))
+    }
+
     fn final_packages(&self) -> Vec<String> {
         let mut pkgs: Vec<String> = self.installed
             .iter()
@@ -125,13 +130,13 @@ fn build_ui(app: &Application) {
 
     root.append(&Separator::new(Orientation::Horizontal));
 
-    let installed_label = Label::new(Some("Managed by SpectreOS"));
+    let installed_label = Label::new(Some("Installed Apps"));
     installed_label.set_halign(Align::Start);
     root.append(&installed_label);
 
     let installed_list = ListBox::new();
     installed_list.set_selection_mode(SelectionMode::None);
-    let ip = Label::new(Some("No packages managed yet"));
+    let ip = Label::new(Some("No packages installed yet"));
     installed_list.set_placeholder(Some(&ip));
     let installed_scroll = ScrolledWindow::builder()
         .min_content_height(100)
@@ -151,7 +156,7 @@ fn build_ui(app: &Application) {
     let spacer = Label::new(None);
     spacer.set_hexpand(true);
     bottom_bar.append(&spacer);
-    let apply_btn = Button::with_label("Apply Changes");
+    let apply_btn = Button::with_label("Install");
     apply_btn.add_css_class("suggested-action");
     apply_btn.set_sensitive(false);
     bottom_bar.append(&apply_btn);
@@ -159,12 +164,15 @@ fn build_ui(app: &Application) {
 
     window.set_child(Some(&root));
 
-    // Populate installed list from persisted state
+    // Populate installed list from all home.packages (sorted, deduped)
     {
-        let installed = state.borrow().installed.clone();
-        for pname in &installed {
+        let mut all = state.borrow().all_installed.clone();
+        all.sort();
+        all.dedup();
+        for pname in &all {
+            let is_managed = state.borrow().is_managed(pname);
             let row = make_installed_row(
-                pname.clone(), state.clone(), installed_list.clone(), apply_btn.clone(),
+                pname.clone(), is_managed, state.clone(), installed_list.clone(), apply_btn.clone(),
             );
             installed_list.append(&row);
         }
@@ -249,8 +257,8 @@ fn build_ui(app: &Application) {
             let final_packages = state.borrow().final_packages();
 
             btn.set_sensitive(false);
-            btn.set_label("Applying…");
-            status_label.set_text("Running home-manager switch…");
+            btn.set_label("Installing…");
+            status_label.set_text("Installing packages…");
 
             let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
             let pkgs = final_packages.clone();
@@ -271,10 +279,10 @@ fn build_ui(app: &Application) {
 
             glib::MainContext::default().spawn_local(async move {
                 if let Ok(result) = receiver.recv().await {
-                    btn2.set_label("Apply Changes");
+                    btn2.set_label("Install");
                     match result {
                         Ok(()) => {
-                            status2.set_text("Done! Changes applied.");
+                            status2.set_text("Done! Packages installed.");
 
                             {
                                 let mut s = state2.borrow_mut();
@@ -289,13 +297,17 @@ fn build_ui(app: &Application) {
                                 staged2.remove(&child);
                             }
 
-                            // Rebuild managed list
+                            // Rebuild installed list from all home.packages
                             while let Some(child) = installed2.first_child() {
                                 installed2.remove(&child);
                             }
-                            for pname in &final_packages {
+                            let mut all = state2.borrow().all_installed.clone();
+                            all.sort();
+                            all.dedup();
+                            for pname in &all {
+                                let is_managed = state2.borrow().is_managed(pname);
                                 let row = make_installed_row(
-                                    pname.clone(), state2.clone(), installed2.clone(), btn2.clone(),
+                                    pname.clone(), is_managed, state2.clone(), installed2.clone(), btn2.clone(),
                                 );
                                 installed2.append(&row);
                             }
@@ -468,6 +480,7 @@ fn make_staged_row(
 
 fn make_installed_row(
     pname: String,
+    is_managed: bool,
     state: Rc<RefCell<State>>,
     installed_list: ListBox,
     apply_btn: Button,
@@ -484,25 +497,37 @@ fn make_installed_row(
     label.set_hexpand(true);
     hbox.append(&label);
 
-    let rm = Button::with_label("Remove");
-    rm.add_css_class("destructive-action");
-    rm.set_valign(Align::Center);
+    if is_managed {
+        let rm = Button::with_label("Remove");
+        rm.add_css_class("destructive-action");
+        rm.set_valign(Align::Center);
 
-    {
-        let pname = pname.clone();
-        let state = state.clone();
-        let installed_list = installed_list.clone();
-        let row = row.clone();
-        let apply_btn = apply_btn.clone();
+        {
+            let pname = pname.clone();
+            let state = state.clone();
+            let installed_list = installed_list.clone();
+            let row = row.clone();
+            let apply_btn = apply_btn.clone();
 
-        rm.connect_clicked(move |_| {
-            state.borrow_mut().staged_remove.insert(pname.clone());
-            installed_list.remove(&row);
-            apply_btn.set_sensitive(true);
-        });
+            rm.connect_clicked(move |_| {
+                // Find the raw form (e.g. "unstable.micro") from installed list
+                let raw = {
+                    let s = state.borrow();
+                    if s.installed.contains(&format!("unstable.{}", pname)) {
+                        format!("unstable.{}", pname)
+                    } else {
+                        pname.clone()
+                    }
+                };
+                state.borrow_mut().staged_remove.insert(raw);
+                installed_list.remove(&row);
+                apply_btn.set_sensitive(true);
+            });
+        }
+
+        hbox.append(&rm);
     }
 
-    hbox.append(&rm);
     row.set_child(Some(&hbox));
     row
 }
