@@ -224,31 +224,6 @@ fn read_legacy_packages(content: &str) -> Vec<String> {
     packages
 }
 
-/// All packages from every home.packages block in home.nix (for search ✓ indicators).
-/// Uses the last component of dotted names so e.g. unstable.spotify → spotify.
-pub fn read_all_home_packages() -> Vec<String> {
-    let content = std::fs::read_to_string(home_nix_path()).unwrap_or_default();
-    let mut in_list = false;
-    let mut packages = Vec::new();
-
-    for line in content.lines() {
-        let t = line.trim();
-        if !in_list && t.starts_with("home.packages") && t.contains("with pkgs") && t.contains('[') {
-            in_list = true;
-            continue;
-        }
-        if in_list {
-            if t.starts_with(']') { in_list = false; continue; }
-            if t.is_empty() || t.starts_with('#') { continue; }
-            let token = t.split_whitespace().next().unwrap_or("");
-            if !token.is_empty() {
-                let pname = token.split('.').last().unwrap_or(token);
-                packages.push(pname.to_string());
-            }
-        }
-    }
-    packages
-}
 
 /// Write the updater's packages as an inline section inside the existing home.packages block.
 /// Also writes a `# @versions` comment to track installed versions for update detection.

@@ -17,7 +17,6 @@ struct State {
     installed: Vec<String>,              // updater-managed block in home.nix
     installed_versions: HashMap<String, String>, // pname -> version at last install
     available_versions: HashMap<String, String>, // pname -> version from channel (post-update)
-    all_installed: Vec<String>,          // all home.packages in home.nix (for ✓ in search)
     staged_add: HashMap<String, Package>,
     staged_remove: HashSet<String>,
 }
@@ -94,7 +93,6 @@ fn build_ui(app: &Application) {
         installed: nix_ops::read_installed_packages(),
         installed_versions: nix_ops::read_installed_versions(),
         available_versions: HashMap::new(),
-        all_installed: nix_ops::read_all_home_packages(),
         staged_add: HashMap::new(),
         staged_remove: HashSet::new(),
     }));
@@ -369,7 +367,6 @@ fn build_ui(app: &Application) {
                                 let mut s = state2.borrow_mut();
                                 s.installed = final_packages.clone();
                                 s.installed_versions = final_versions.clone();
-                                s.all_installed = nix_ops::read_all_home_packages();
                                 s.staged_add.clear();
                                 s.staged_remove.clear();
                             }
@@ -455,7 +452,7 @@ fn build_ui(app: &Application) {
     }
 }
 
-/// Clears and repopulates the installed list from the current state.
+/// Clears and repopulates the installed list from the updater-managed package set.
 fn rebuild_installed_list(
     installed_list: &ListBox,
     state: &Rc<RefCell<State>>,
@@ -464,13 +461,11 @@ fn rebuild_installed_list(
     while let Some(child) = installed_list.first_child() {
         installed_list.remove(&child);
     }
-    let mut all = state.borrow().all_installed.clone();
-    all.sort();
-    all.dedup();
-    for pname in &all {
-        let is_managed = state.borrow().is_managed(pname);
+    let installed = state.borrow().installed.clone();
+    for raw in &installed {
+        let pname = raw.split('.').last().unwrap_or(raw.as_str()).to_string();
         let row = make_installed_row(
-            pname.clone(), is_managed, state.clone(), installed_list.clone(), apply_btn.clone(),
+            pname, true, state.clone(), installed_list.clone(), apply_btn.clone(),
         );
         installed_list.append(&row);
     }
@@ -513,7 +508,7 @@ fn make_result_row(
 
     let is_installed = {
         let s = state.borrow();
-        s.all_installed.contains(&pkg.pname)
+        s.is_managed(&pkg.pname)
             && !s.staged_remove.contains(&pkg.pname)
             && !s.staged_remove.contains(&format!("unstable.{}", pkg.pname))
     };
