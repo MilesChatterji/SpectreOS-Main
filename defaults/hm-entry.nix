@@ -18,6 +18,7 @@ in
   home.homeDirectory = "/home/__USERNAME__";
 
   home.packages = with pkgs; [
+    # SpectreOS Updater managed packages — do not edit below
     # System info
     fastfetch
     neofetch
@@ -25,67 +26,48 @@ in
     cmatrix
     powertop
     conky
-
     # Terminal / TUI
     ghostty
     btop
     cava
     yazi
     fzf
-
     # Launcher
     fuzzel
-
     # Browsers / communication
     brave
     unstable.spotify
     signal-desktop
     signal-cli
     discord
-    # zoom-us                    # Not practical in a VM; install manually if needed
     vlc
     thunderbird
     teams-for-linux
-
     # Private productivity
     proton-authenticator
     protonmail-bridge-gui
     proton-pass
     protonvpn-gui
     standardnotes
-
     # Development
     gh
     rustc
     cargo
     pkg-config
-    # unstable.code-cursor      # Large; install manually if needed in a VM
-    # unstable.claude-code       # Large; install manually if needed in a VM
     virt-manager
-
     # Creative
-    # unstable.davinci-resolve-studio  # GPU-dependent; not suitable for VM use
-    # alsa-plugins                     # ALSA → PipeWire bridge (only needed for DaVinci Resolve)
     unstable.darktable
     gimp3
     audacity
     easyeffects
-
     # Utilities
     unstable.omnissa-horizon-client
     dropbox-cli
-
-    # Games
-    # steam                      # Performance-dependent; install manually if needed in a VM
-
     # Fonts
     nerd-fonts.jetbrains-mono
-
     # GTK theming
     ayu-theme-gtk
     tela-icon-theme
-
-    # SpectreOS Updater managed packages — do not edit below
     # END SpectreOS Updater
   ];
 }
