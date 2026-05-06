@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Clone, Debug)]
 pub struct Package {
     pub pname: String,
@@ -117,6 +119,64 @@ fn json_escape(s: &str) -> String {
         .collect()
 }
 
+/// Run `nix-channel --update` for the user's channels. No sudo required for user-owned channels.
+pub fn run_channel_update() -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = format!(
+        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
+        home, existing_path
+    );
+    let output = std::process::Command::new("nix-channel")
+        .env("PATH", &extended_path)
+        .arg("--update")
+        .output()
+        .map_err(|e| format!("failed to run nix-channel: {}", e))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "nix-channel --update failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+/// Read the installed versions stored in the `# @versions` comment inside the managed block.
+pub fn read_installed_versions() -> HashMap<String, String> {
+    let content = std::fs::read_to_string(home_nix_path()).unwrap_or_default();
+    parse_versions_comment(&content)
+}
+
+fn parse_versions_comment(content: &str) -> HashMap<String, String> {
+    for line in content.lines() {
+        if let Some(rest) = line.trim().strip_prefix("# @versions ") {
+            return rest
+                .split_whitespace()
+                .filter_map(|kv| {
+                    let mut it = kv.splitn(2, '=');
+                    Some((it.next()?.to_string(), it.next()?.to_string()))
+                })
+                .collect();
+        }
+    }
+    HashMap::new()
+}
+
+/// Fetch the current available version for each managed package from the nixpkgs ES index.
+/// `managed` is a slice of (pname, is_unstable) pairs. Results are keyed by pname.
+pub fn fetch_available_versions(managed: &[(String, bool)]) -> HashMap<String, String> {
+    let mut result = HashMap::new();
+    for (pname, is_unstable) in managed {
+        let channel = if *is_unstable { NIXOS_UNSTABLE_VERSION } else { NIXOS_VERSION };
+        let hits = search_channel(pname, channel, *is_unstable);
+        if let Some(pkg) = hits.into_iter().find(|p| &p.pname == pname) {
+            result.insert(pname.clone(), pkg.version);
+        }
+    }
+    result
+}
+
 /// Packages managed by the updater (inline section inside home.packages in home.nix).
 /// Falls back to the legacy separate-block format for migration reads.
 pub fn read_installed_packages() -> Vec<String> {
@@ -191,14 +251,23 @@ pub fn read_all_home_packages() -> Vec<String> {
 }
 
 /// Write the updater's packages as an inline section inside the existing home.packages block.
+/// Also writes a `# @versions` comment to track installed versions for update detection.
 ///
 /// If the legacy separate-block format is detected it is removed first (migration), then the
 /// packages are written inline. This avoids the "attribute 'home' already defined" Nix error
 /// caused by having two `home.packages = ...` definitions in the same attrset.
-pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
+pub fn write_extra_packages(packages: &[String], versions: &HashMap<String, String>) -> std::io::Result<()> {
     let path = home_nix_path();
     let content = std::fs::read_to_string(&path)?;
     let _ = std::fs::copy(&path, format!("{}.updater-bak", path));
+
+    let versions_line = if versions.is_empty() {
+        String::new()
+    } else {
+        let mut pairs: Vec<String> = versions.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        pairs.sort();
+        format!("\n    # @versions {}", pairs.join(" "))
+    };
 
     let pkg_lines: String = packages
         .iter()
@@ -206,11 +275,10 @@ pub fn write_extra_packages(packages: &[String]) -> std::io::Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    // Inline section: just package names (no home.packages = wrapper), indented to match.
     let inline_section = if packages.is_empty() {
-        format!("    {}\n    {}", UPDATER_INLINE_START, UPDATER_END)
+        format!("    {}{}\n    {}", UPDATER_INLINE_START, versions_line, UPDATER_END)
     } else {
-        format!("    {}\n{}\n    {}", UPDATER_INLINE_START, pkg_lines, UPDATER_END)
+        format!("    {}{}\n{}\n    {}", UPDATER_INLINE_START, versions_line, pkg_lines, UPDATER_END)
     };
 
     // Step 1: migrate away from legacy separate block if present.
