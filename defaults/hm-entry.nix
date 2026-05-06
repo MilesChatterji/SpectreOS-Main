@@ -16,4 +16,12 @@ in
   imports = [ /etc/nixos/spectreos/defaults/home.nix ];
   home.username = "__USERNAME__";
   home.homeDirectory = "/home/__USERNAME__";
+
+  # User-installed packages — managed by the SpectreOS Package Manager.
+  # The updater reads and writes the marked section below; everything else
+  # in this file is safe to edit.
+  home.packages = with pkgs; [
+    # SpectreOS Updater managed packages — do not edit below
+    # END SpectreOS Updater
+  ];
 }
