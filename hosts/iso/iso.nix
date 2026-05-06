@@ -107,6 +107,7 @@ in
       TTYReset = "yes";
       TTYVHangup = "yes";
       Restart = "no";
+      Environment = "PATH=/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin";
     };
   };
 
