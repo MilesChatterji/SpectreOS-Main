@@ -18,6 +18,12 @@ SPECTREOS_DIR="/mnt/etc/nixos/spectreos"
 info()  { echo "==> $*"; }
 error() { echo "error: $*" >&2; exit 1; }
 
+# Ensure PATH and NIX_PATH are set correctly — systemd services don't inherit
+# the interactive session environment, so tools like parted and nixpkgs lookups
+# would fail without this.
+export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:$PATH"
+export NIX_PATH="nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos:/nix/var/nix/profiles/per-user/root/channels"
+
 # --- preflight ---
 [[ $EUID -eq 0 ]] || error "Run as root (sudo bash install.sh)"
 command -v parted &>/dev/null || error "parted not found"

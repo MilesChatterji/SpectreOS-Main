@@ -107,7 +107,10 @@ in
       TTYReset = "yes";
       TTYVHangup = "yes";
       Restart = "no";
-      Environment = "PATH=/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin";
+      Environment = [
+        "PATH=/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
+        "NIX_PATH=nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos:/nix/var/nix/profiles/per-user/root/channels"
+      ];
     };
   };
 
