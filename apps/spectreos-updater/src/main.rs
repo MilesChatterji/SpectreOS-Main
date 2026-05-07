@@ -14,9 +14,9 @@ use nix_ops::Package;
 const APP_ID: &str = "com.spectreOS.Updater";
 
 struct State {
-    installed: Vec<String>,              // updater-managed block in home.nix
-    installed_versions: HashMap<String, String>, // pname -> version at last install
-    available_versions: HashMap<String, String>, // pname -> version from channel (post-update)
+    installed: Vec<String>,
+    installed_versions: HashMap<String, String>,
+    available_versions: HashMap<String, String>,
     staged_add: HashMap<String, Package>,
     staged_remove: HashSet<String>,
 }
@@ -97,6 +97,20 @@ fn build_ui(app: &Application) {
         staged_remove: HashSet::new(),
     }));
 
+    // CSS for update badge and staging indicators
+    let css = gtk4::CssProvider::new();
+    css.load_from_string(
+        ".update-badge { color: #3584e4; font-size: 0.8em; \
+         border: 1px solid #3584e4; border-radius: 4px; padding: 0 6px; margin-start: 6px; } \
+         .install-badge { color: #26a269; font-weight: bold; min-width: 14px; } \
+         .remove-badge  { color: #c01c28; font-weight: bold; min-width: 14px; }",
+    );
+    gtk4::style_context_add_provider_for_display(
+        &gtk4::gdk::Display::default().expect("no display"),
+        &css,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+
     let window = ApplicationWindow::builder()
         .application(app)
         .title("SpectreOS Package Manager")
@@ -142,13 +156,13 @@ fn build_ui(app: &Application) {
 
     root.append(&Separator::new(Orientation::Horizontal));
 
-    let staged_label = Label::new(Some("Staged to Add"));
+    let staged_label = Label::new(Some("Install/Uninstall Staging"));
     staged_label.set_halign(Align::Start);
     root.append(&staged_label);
 
     let staged_list = ListBox::new();
     staged_list.set_selection_mode(SelectionMode::None);
-    let sp = Label::new(Some("No packages staged"));
+    let sp = Label::new(Some("No changes staged"));
     staged_list.set_placeholder(Some(&sp));
     let staged_scroll = ScrolledWindow::builder()
         .min_content_height(80)
@@ -198,8 +212,7 @@ fn build_ui(app: &Application) {
 
     window.set_child(Some(&root));
 
-    // Populate installed list
-    rebuild_installed_list(&installed_list, &state, &apply_btn);
+    rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn);
 
     window.present();
 
@@ -209,7 +222,7 @@ fn build_ui(app: &Application) {
         quit_btn.connect_clicked(move |_| window.close());
     }
 
-    // Search — shared trigger used by both the SearchEntry and the unstable checkbox.
+    // Search
     let trigger_search = {
         let results_list = results_list.clone();
         let staged_list = staged_list.clone();
@@ -265,22 +278,19 @@ fn build_ui(app: &Application) {
         unstable_check.connect_toggled(move |_| trigger());
     }
 
-    // Channel update on launch — runs nix-channel --update then fetches available versions.
+    // Channel update on launch
     {
         let state = state.clone();
         let status_label = status_label.clone();
         let installed_list = installed_list.clone();
+        let staged_list = staged_list.clone();
         let update_all_btn = update_all_btn.clone();
         let apply_btn = apply_btn.clone();
 
         let managed: Vec<(String, bool)> = state.borrow().installed.iter()
             .map(|p| {
                 let is_unstable = p.starts_with("unstable.");
-                let pname = if is_unstable {
-                    p["unstable.".len()..].to_string()
-                } else {
-                    p.clone()
-                };
+                let pname = if is_unstable { p["unstable.".len()..].to_string() } else { p.clone() };
                 (pname, is_unstable)
             })
             .collect();
@@ -311,13 +321,13 @@ fn build_ui(app: &Application) {
                         status_label.set_text("");
                     }
 
-                    rebuild_installed_list(&installed_list, &state, &apply_btn);
+                    rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn);
                 }
             });
         }
     }
 
-    // Install (apply staged changes)
+    // Apply staged changes
     {
         let state = state.clone();
         let status_label = status_label.clone();
@@ -334,8 +344,8 @@ fn build_ui(app: &Application) {
             let final_versions = state.borrow().final_versions();
 
             btn.set_sensitive(false);
-            btn.set_label("Installing…");
-            status_label.set_text("Installing packages…");
+            btn.set_label("Applying…");
+            status_label.set_text("Applying changes…");
 
             let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
             let pkgs = final_packages.clone();
@@ -358,10 +368,9 @@ fn build_ui(app: &Application) {
 
             glib::MainContext::default().spawn_local(async move {
                 if let Ok(result) = receiver.recv().await {
-                    btn2.set_label("Install");
                     match result {
                         Ok(()) => {
-                            status2.set_text("Done! Packages installed.");
+                            status2.set_text("Done! Changes applied.");
 
                             {
                                 let mut s = state2.borrow_mut();
@@ -375,20 +384,18 @@ fn build_ui(app: &Application) {
                                 staged2.remove(&child);
                             }
 
-                            rebuild_installed_list(&installed2, &state2, &btn2);
-
+                            rebuild_installed_list(&installed2, &staged2, &state2, &btn2);
+                            update_apply_btn(&btn2, &state2);
                             update_all_btn2.set_sensitive(state2.borrow().any_updates());
 
                             search2.set_text("");
                             while let Some(child) = results2.first_child() {
                                 results2.remove(&child);
                             }
-
-                            btn2.set_sensitive(false);
                         }
                         Err(ref e) => {
                             status2.set_text(&format!("Error: {}", e));
-                            btn2.set_sensitive(true);
+                            update_apply_btn(&btn2, &state2);
                         }
                     }
                 }
@@ -396,12 +403,13 @@ fn build_ui(app: &Application) {
         });
     }
 
-    // Update All — runs home-manager switch after channel update to pull latest versions.
+    // Update All
     {
         let state = state.clone();
         let status_label = status_label.clone();
         let update_all_btn_ref = update_all_btn.clone();
         let installed_list = installed_list.clone();
+        let staged_list = staged_list.clone();
         let apply_btn = apply_btn.clone();
 
         update_all_btn.connect_clicked(move |btn| {
@@ -418,6 +426,7 @@ fn build_ui(app: &Application) {
             let status2 = status_label.clone();
             let state2 = state.clone();
             let installed2 = installed_list.clone();
+            let staged2 = staged_list.clone();
             let apply_btn2 = apply_btn.clone();
 
             glib::MainContext::default().spawn_local(async move {
@@ -425,7 +434,6 @@ fn build_ui(app: &Application) {
                     btn2.set_label("Update All");
                     match result {
                         Ok(()) => {
-                            // Promote available_versions into installed_versions.
                             let pkgs = {
                                 let mut s = state2.borrow_mut();
                                 for (pname, ver) in s.available_versions.clone() {
@@ -438,7 +446,7 @@ fn build_ui(app: &Application) {
                             let _ = nix_ops::write_extra_packages(&pkgs, &versions);
 
                             status2.set_text("All packages updated.");
-                            rebuild_installed_list(&installed2, &state2, &apply_btn2);
+                            rebuild_installed_list(&installed2, &staged2, &state2, &apply_btn2);
                             btn2.set_sensitive(false);
                         }
                         Err(ref e) => {
@@ -452,9 +460,24 @@ fn build_ui(app: &Application) {
     }
 }
 
-/// Clears and repopulates the installed list from the updater-managed package set.
+/// Update the Install/Uninstall button label and sensitivity based on staged state.
+fn update_apply_btn(btn: &Button, state: &Rc<RefCell<State>>) {
+    let s = state.borrow();
+    let has_adds = !s.staged_add.is_empty();
+    let has_removes = !s.staged_remove.is_empty();
+    btn.set_sensitive(has_adds || has_removes);
+    btn.set_label(if has_adds && has_removes {
+        "Install/Uninstall"
+    } else if has_removes {
+        "Uninstall"
+    } else {
+        "Install"
+    });
+}
+
 fn rebuild_installed_list(
     installed_list: &ListBox,
+    staged_list: &ListBox,
     state: &Rc<RefCell<State>>,
     apply_btn: &Button,
 ) {
@@ -463,9 +486,11 @@ fn rebuild_installed_list(
     }
     let installed = state.borrow().installed.clone();
     for raw in &installed {
+        // Items staged for removal are shown in the staging area, not here.
+        if state.borrow().staged_remove.contains(raw) { continue; }
         let pname = raw.split('.').last().unwrap_or(raw.as_str()).to_string();
         let row = make_installed_row(
-            pname, true, state.clone(), installed_list.clone(), apply_btn.clone(),
+            pname, state.clone(), installed_list.clone(), staged_list.clone(), apply_btn.clone(),
         );
         installed_list.append(&row);
     }
@@ -523,9 +548,7 @@ fn make_result_row(
     } else {
         let add_btn = Button::with_label(if is_staged { "–" } else { "+" });
         add_btn.set_valign(Align::Center);
-        if is_staged {
-            add_btn.add_css_class("suggested-action");
-        }
+        if is_staged { add_btn.add_css_class("suggested-action"); }
 
         {
             let pname = pkg.pname.clone();
@@ -541,21 +564,18 @@ fn make_result_row(
                     remove_staged_row_by_name(&staged_list, &pname);
                     btn.set_label("+");
                     btn.remove_css_class("suggested-action");
-                    if !state.borrow().needs_apply() {
-                        apply_btn.set_sensitive(false);
-                    }
                 } else {
                     if state.borrow().staged_add.contains_key(&pname) { return; }
                     state.borrow_mut().staged_add.insert(pname.clone(), pkg.clone());
-                    let staged_row = make_staged_row(
+                    let staged_row = make_staged_install_row(
                         pname.clone(), state.clone(), staged_list.clone(),
                         apply_btn.clone(), btn.clone(),
                     );
                     staged_list.append(&staged_row);
                     btn.set_label("–");
                     btn.add_css_class("suggested-action");
-                    apply_btn.set_sensitive(true);
                 }
+                update_apply_btn(&apply_btn, &state);
             });
         }
 
@@ -566,7 +586,8 @@ fn make_result_row(
     row
 }
 
-fn make_staged_row(
+/// Staged row for a package being INSTALLED (shows green + badge).
+fn make_staged_install_row(
     pname: String,
     state: Rc<RefCell<State>>,
     staged_list: ListBox,
@@ -581,6 +602,11 @@ fn make_staged_row(
     hbox.set_margin_bottom(4);
     hbox.set_margin_start(8);
     hbox.set_margin_end(8);
+
+    let badge = Label::new(Some("+"));
+    badge.add_css_class("install-badge");
+    badge.set_valign(Align::Center);
+    hbox.append(&badge);
 
     let label = Label::new(Some(&pname));
     label.set_halign(Align::Start);
@@ -603,9 +629,7 @@ fn make_staged_row(
             staged_list.remove(&row);
             add_btn.set_label("+");
             add_btn.remove_css_class("suggested-action");
-            if !state.borrow().needs_apply() {
-                apply_btn.set_sensitive(false);
-            }
+            update_apply_btn(&apply_btn, &state);
         });
     }
 
@@ -614,11 +638,63 @@ fn make_staged_row(
     row
 }
 
+/// Staged row for a package being REMOVED (shows red − badge).
+/// The × button restores the package to the installed list.
+fn make_staged_remove_row(
+    pname: String,
+    raw: String,
+    state: Rc<RefCell<State>>,
+    staged_list: ListBox,
+    installed_list: ListBox,
+    apply_btn: Button,
+) -> ListBoxRow {
+    let row = ListBoxRow::new();
+    row.set_widget_name(&pname);
+
+    let hbox = GtkBox::new(Orientation::Horizontal, 8);
+    hbox.set_margin_top(4);
+    hbox.set_margin_bottom(4);
+    hbox.set_margin_start(8);
+    hbox.set_margin_end(8);
+
+    let badge = Label::new(Some("−"));
+    badge.add_css_class("remove-badge");
+    badge.set_valign(Align::Center);
+    hbox.append(&badge);
+
+    let label = Label::new(Some(&pname));
+    label.set_halign(Align::Start);
+    label.set_hexpand(true);
+    hbox.append(&label);
+
+    let cancel = Button::with_label("×");
+    cancel.set_valign(Align::Center);
+
+    {
+        let state = state.clone();
+        let staged_list = staged_list.clone();
+        let installed_list = installed_list.clone();
+        let apply_btn = apply_btn.clone();
+        let row = row.clone();
+
+        cancel.connect_clicked(move |_| {
+            state.borrow_mut().staged_remove.remove(&raw);
+            staged_list.remove(&row);
+            rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn);
+            update_apply_btn(&apply_btn, &state);
+        });
+    }
+
+    hbox.append(&cancel);
+    row.set_child(Some(&hbox));
+    row
+}
+
 fn make_installed_row(
     pname: String,
-    is_managed: bool,
     state: Rc<RefCell<State>>,
     installed_list: ListBox,
+    staged_list: ListBox,
     apply_btn: Button,
 ) -> ListBoxRow {
     let row = ListBoxRow::new();
@@ -628,70 +704,82 @@ fn make_installed_row(
     hbox.set_margin_start(8);
     hbox.set_margin_end(8);
 
-    if is_managed {
-        let info = GtkBox::new(Orientation::Vertical, 2);
-        info.set_hexpand(true);
+    let info = GtkBox::new(Orientation::Vertical, 2);
+    info.set_hexpand(true);
 
-        let name_label = Label::new(Some(&pname));
-        name_label.set_halign(Align::Start);
-        info.append(&name_label);
+    let has_update = state.borrow().has_update(&pname);
 
-        let installed_v = state.borrow().installed_versions.get(&pname).cloned();
-        let available_v = state.borrow().available_versions.get(&pname).cloned();
+    // Name row — includes blue "Update" pill when an update is available.
+    let name_row = GtkBox::new(Orientation::Horizontal, 4);
+    name_row.set_halign(Align::Start);
+    let name_label = Label::new(Some(&pname));
+    name_label.set_halign(Align::Start);
+    name_row.append(&name_label);
+    if has_update {
+        let badge = Label::new(Some("Update"));
+        badge.add_css_class("update-badge");
+        badge.set_valign(Align::Center);
+        name_row.append(&badge);
+    }
+    info.append(&name_row);
 
-        if let Some(ref avail) = available_v {
-            let version_text = match &installed_v {
-                Some(inst) if inst != avail => format!("{} → {} available", inst, avail),
-                Some(inst) => inst.clone(),
-                None => format!("{} available", avail),
-            };
-            let version_label = Label::new(Some(&version_text));
-            version_label.set_halign(Align::Start);
-            version_label.add_css_class("dim-label");
-            info.append(&version_label);
-        } else if let Some(ref inst) = installed_v {
-            let version_label = Label::new(Some(inst.as_str()));
-            version_label.set_halign(Align::Start);
-            version_label.add_css_class("dim-label");
-            info.append(&version_label);
-        }
+    // Version info row (dim).
+    let installed_v = state.borrow().installed_versions.get(&pname).cloned();
+    let available_v = state.borrow().available_versions.get(&pname).cloned();
 
-        hbox.append(&info);
-
-        let rm = Button::with_label("Remove");
-        rm.add_css_class("destructive-action");
-        rm.set_valign(Align::Center);
-
-        {
-            let pname = pname.clone();
-            let state = state.clone();
-            let installed_list = installed_list.clone();
-            let row = row.clone();
-            let apply_btn = apply_btn.clone();
-
-            rm.connect_clicked(move |_| {
-                let raw = {
-                    let s = state.borrow();
-                    if s.installed.contains(&format!("unstable.{}", pname)) {
-                        format!("unstable.{}", pname)
-                    } else {
-                        pname.clone()
-                    }
-                };
-                state.borrow_mut().staged_remove.insert(raw);
-                installed_list.remove(&row);
-                apply_btn.set_sensitive(true);
-            });
-        }
-
-        hbox.append(&rm);
-    } else {
-        let label = Label::new(Some(&pname));
-        label.set_halign(Align::Start);
-        label.set_hexpand(true);
-        hbox.append(&label);
+    if let Some(ref avail) = available_v {
+        let version_text = match &installed_v {
+            Some(inst) if inst != avail => format!("{} → {} available", inst, avail),
+            Some(inst) => inst.clone(),
+            None => format!("{} available", avail),
+        };
+        let version_label = Label::new(Some(&version_text));
+        version_label.set_halign(Align::Start);
+        version_label.add_css_class("dim-label");
+        info.append(&version_label);
+    } else if let Some(ref inst) = installed_v {
+        let version_label = Label::new(Some(inst.as_str()));
+        version_label.set_halign(Align::Start);
+        version_label.add_css_class("dim-label");
+        info.append(&version_label);
     }
 
+    hbox.append(&info);
+
+    let rm = Button::with_label("Remove");
+    rm.add_css_class("destructive-action");
+    rm.set_valign(Align::Center);
+
+    {
+        let pname = pname.clone();
+        let state = state.clone();
+        let installed_list = installed_list.clone();
+        let staged_list = staged_list.clone();
+        let row = row.clone();
+        let apply_btn = apply_btn.clone();
+
+        rm.connect_clicked(move |_| {
+            let raw = {
+                let s = state.borrow();
+                if s.installed.contains(&format!("unstable.{}", pname)) {
+                    format!("unstable.{}", pname)
+                } else {
+                    pname.clone()
+                }
+            };
+            state.borrow_mut().staged_remove.insert(raw.clone());
+            installed_list.remove(&row);
+
+            let staged_row = make_staged_remove_row(
+                pname.clone(), raw, state.clone(),
+                staged_list.clone(), installed_list.clone(), apply_btn.clone(),
+            );
+            staged_list.append(&staged_row);
+            update_apply_btn(&apply_btn, &state);
+        });
+    }
+
+    hbox.append(&rm);
     row.set_child(Some(&hbox));
     row
 }
