@@ -272,6 +272,17 @@ in
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
+  # Include home-manager modules in NIX_PATH so 'home-manager switch' can find
+  # its own Nix files. The binary relies on <home-manager/...> resolving via
+  # NIX_PATH — it does NOT set this itself. Pointing at pkgs.home-manager.src
+  # ensures the version stays in lock-step with the installed binary.
+  nix.nixPath = [
+    "home-manager=${pkgs.home-manager.src}"
+    "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
+    "nixos-config=/etc/nixos/configuration.nix"
+    "/nix/var/nix/profiles/per-user/root/channels"
+  ];
+
   environment.systemPackages = with pkgs; [
     (pkgs.callPackage ./apps/spectreos-updater/package.nix {})
     neovim        # TTY/recovery editor

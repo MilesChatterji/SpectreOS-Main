@@ -376,23 +376,6 @@ fn insert_before_last_brace(content: &str, new_block: &str) -> String {
     }
 }
 
-/// Resolve the home-manager binary to its Nix store path and return the
-/// adjacent share/home-manager directory. This is where home-manager's own
-/// Nix modules live — needed for the `home-manager` entry in NIX_PATH.
-fn find_home_manager_modules(path: &str) -> Option<String> {
-    let output = std::process::Command::new("sh")
-        .env("PATH", path)
-        .args(["-c", "readlink -f \"$(command -v home-manager)\" 2>/dev/null"])
-        .output().ok()?;
-    let real = String::from_utf8(output.stdout).ok()?.trim().to_string();
-    if real.is_empty() { return None; }
-    let share = std::path::Path::new(&real)
-        .parent()? // .../bin
-        .parent()? // .../store-path
-        .join("share/home-manager");
-    share.exists().then(|| share.to_string_lossy().to_string())
-}
-
 pub fn run_home_manager() -> Result<(), String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let existing_path = std::env::var("PATH").unwrap_or_default();
@@ -401,27 +384,22 @@ pub fn run_home_manager() -> Result<(), String> {
         home, existing_path
     );
 
-    // GUI apps don't inherit NIX_PATH from the login shell. Resolve home-manager's
-    // store path dynamically and prepend it so nix can find home-manager's own modules.
-    let existing_nix_path = std::env::var("NIX_PATH").unwrap_or_default();
-    let nix_path = match find_home_manager_modules(&extended_path) {
-        Some(modules) => {
-            let entry = format!("home-manager={}", modules);
-            if existing_nix_path.is_empty() {
-                entry
-            } else {
-                format!("{}:{}", entry, existing_nix_path)
-            }
-        }
-        None => existing_nix_path,
-    };
-
-    let output = std::process::Command::new("home-manager")
+    // The updater is launched as a GUI app and does not inherit the login-shell
+    // environment. home-manager's binary relies entirely on NIX_PATH (from channels)
+    // to find its own Nix modules — it does not set NIX_PATH itself.
+    // bash -l sources /etc/profile which sets NIX_PATH correctly (including the
+    // home-manager entry added via nix.nixPath in configuration.nix).
+    let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
-        .env("NIX_PATH", &nix_path)
-        .args(["switch", "-b", "backup", "--option", "max-jobs", "2", "--option", "cores", "2"])
+        .env("HOME", &home)
+        .env_remove("NIX_PATH")
+        .args([
+            "-l",
+            "-c",
+            "home-manager switch -b backup --option max-jobs 2 --option cores 2",
+        ])
         .output()
-        .map_err(|e| format!("failed to launch home-manager: {}", e))?;
+        .map_err(|e| format!("failed to launch bash: {}", e))?;
 
     if output.status.success() {
         Ok(())
