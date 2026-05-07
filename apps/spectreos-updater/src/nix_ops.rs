@@ -378,15 +378,23 @@ fn insert_before_last_brace(content: &str, new_block: &str) -> String {
 
 pub fn run_home_manager() -> Result<(), String> {
     let home = std::env::var("HOME").unwrap_or_default();
+    let user = std::env::var("USER").unwrap_or_default();
     let existing_path = std::env::var("PATH").unwrap_or_default();
     // Prepend common nix profile locations in case the GUI was launched without a full login shell.
     let extended_path = format!(
         "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
         home, existing_path
     );
+    // GUI apps don't inherit NIX_PATH from the login shell — set it explicitly so
+    // home-manager can find its own modules and nixpkgs.
+    let nix_path = format!(
+        "home-manager={}/.nix-profile/share/home-manager:nixpkgs={}/.nix-defexpr/channels/nixos:{}/.nix-defexpr/channels:/nix/var/nix/profiles/per-user/{}/channels/nixos:/nix/var/nix/profiles/per-user/{}/channels",
+        home, home, home, user, user
+    );
 
     let output = std::process::Command::new("home-manager")
         .env("PATH", &extended_path)
+        .env("NIX_PATH", &nix_path)
         .args(["switch", "-b", "backup", "--option", "max-jobs", "2", "--option", "cores", "2"])
         .output()
         .map_err(|e| format!("failed to launch home-manager: {}", e))?;
