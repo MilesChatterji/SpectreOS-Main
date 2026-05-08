@@ -299,16 +299,14 @@ fn build_ui(app: &Application) {
             status_label.set_text("Checking for updates…");
 
             let (sender, receiver) =
-                async_channel::bounded::<(Result<(), String>, HashMap<String, String>)>(1);
+                async_channel::bounded::<HashMap<String, String>>(1);
 
             std::thread::spawn(move || {
-                let channel_result = nix_ops::run_channel_update();
-                let available = nix_ops::fetch_available_versions(&managed);
-                let _ = sender.send_blocking((channel_result, available));
+                let _ = sender.send_blocking(nix_ops::fetch_available_versions(&managed));
             });
 
             glib::MainContext::default().spawn_local(async move {
-                if let Ok((_channel_result, available)) = receiver.recv().await {
+                if let Ok(available) = receiver.recv().await {
                     state.borrow_mut().available_versions = available;
 
                     let has_updates = state.borrow().any_updates();

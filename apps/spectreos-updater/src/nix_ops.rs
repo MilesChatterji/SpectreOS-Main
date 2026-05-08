@@ -119,28 +119,6 @@ fn json_escape(s: &str) -> String {
         .collect()
 }
 
-/// Run `nix-channel --update` for the user's channels. No sudo required for user-owned channels.
-pub fn run_channel_update() -> Result<(), String> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let existing_path = std::env::var("PATH").unwrap_or_default();
-    let extended_path = format!(
-        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
-        home, existing_path
-    );
-    let output = std::process::Command::new("nix-channel")
-        .env("PATH", &extended_path)
-        .arg("--update")
-        .output()
-        .map_err(|e| format!("failed to run nix-channel: {}", e))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "nix-channel --update failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ))
-    }
-}
 
 /// Read the installed versions stored in the `# @versions` comment inside the managed block.
 pub fn read_installed_versions() -> HashMap<String, String> {
