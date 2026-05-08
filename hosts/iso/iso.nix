@@ -115,7 +115,7 @@ in
   };
 
   # ISO metadata
-  image.fileName = "spectreos-vm-installer.iso";
+  image.baseName = lib.mkForce "spectreos-minimal-${config.system.nixos.label}-x86_64-linux";
   isoImage.volumeID = "SPECTREOS_VM";
 
   system.stateVersion = "25.11";
