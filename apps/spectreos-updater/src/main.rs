@@ -603,6 +603,168 @@ fn build_system_tab(status_label: &Label) -> GtkBox {
     note.set_wrap(true);
     vbox.append(&note);
 
+    // ── Apply Updates ─────────────────────────────────────────────────────
+    let sep1 = gtk4::Separator::new(Orientation::Horizontal);
+    sep1.set_margin_top(8);
+    sep1.set_margin_bottom(8);
+    vbox.append(&sep1);
+
+    let rebuild_title = Label::new(Some("System Updates"));
+    rebuild_title.add_css_class("title-4");
+    rebuild_title.set_halign(Align::Start);
+    vbox.append(&rebuild_title);
+
+    let rebuild_subtitle = Label::new(Some("Install pending kernel and driver updates"));
+    rebuild_subtitle.add_css_class("dim-label");
+    rebuild_subtitle.set_halign(Align::Start);
+    vbox.append(&rebuild_subtitle);
+
+    let rebuild_status = Label::new(Some(""));
+    rebuild_status.set_halign(Align::Start);
+
+    let rebuild_btn = Button::with_label("Apply Updates");
+    rebuild_btn.set_halign(Align::Start);
+    rebuild_btn.set_margin_top(4);
+
+    {
+        let rebuild_btn_ref = rebuild_btn.clone();
+        let rebuild_status = rebuild_status.clone();
+        let status_label = status_label.clone();
+
+        rebuild_btn.connect_clicked(move |btn| {
+            btn.set_sensitive(false);
+            btn.set_label("Applying…");
+            rebuild_status.set_text("Running system rebuild — this may take a few minutes…");
+            status_label.set_text("System update in progress…");
+
+            let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
+            std::thread::spawn(move || {
+                let _ = sender.send_blocking(nix_ops::run_system_rebuild());
+            });
+
+            let btn2 = rebuild_btn_ref.clone();
+            let rebuild_status2 = rebuild_status.clone();
+            let status_label2 = status_label.clone();
+
+            glib::MainContext::default().spawn_local(async move {
+                if let Ok(result) = receiver.recv().await {
+                    btn2.set_sensitive(true);
+                    btn2.set_label("Apply Updates");
+                    match result {
+                        Ok(()) => {
+                            rebuild_status2.set_text("Updates applied. Reboot to activate kernel/driver changes.");
+                            status_label2.set_text("System updated.");
+                        }
+                        Err(ref e) => {
+                            rebuild_status2.set_text(&format!("Update failed: {}", e));
+                            status_label2.set_text("System update failed.");
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    vbox.append(&rebuild_btn);
+    vbox.append(&rebuild_status);
+
+    // ── Generation List ───────────────────────────────────────────────────
+    let sep2 = gtk4::Separator::new(Orientation::Horizontal);
+    sep2.set_margin_top(8);
+    sep2.set_margin_bottom(8);
+    vbox.append(&sep2);
+
+    let gen_title = Label::new(Some("System Generations"));
+    gen_title.add_css_class("title-4");
+    gen_title.set_halign(Align::Start);
+    vbox.append(&gen_title);
+
+    let gen_list_box = gtk4::ListBox::new();
+    gen_list_box.set_selection_mode(gtk4::SelectionMode::None);
+    gen_list_box.add_css_class("boxed-list");
+
+    let gen_status = Label::new(Some(""));
+    gen_status.set_halign(Align::Start);
+
+    match nix_ops::list_generations() {
+        Ok(gens) => {
+            for gen in gens {
+                let row = gtk4::Box::new(Orientation::Horizontal, 12);
+                row.set_margin_top(6);
+                row.set_margin_bottom(6);
+                row.set_margin_start(8);
+                row.set_margin_end(8);
+
+                let info = Label::new(Some(&format!("#{} — {}", gen.id, gen.date)));
+                info.set_halign(Align::Start);
+                info.set_hexpand(true);
+                row.append(&info);
+
+                if gen.current {
+                    let badge = Label::new(Some("current"));
+                    badge.add_css_class("success");
+                    badge.add_css_class("caption");
+                    row.append(&badge);
+                } else {
+                    let rollback_btn = Button::with_label("Roll Back");
+                    rollback_btn.add_css_class("destructive-action");
+                    rollback_btn.set_halign(Align::End);
+
+                    let gen_id = gen.id;
+                    let gen_status_ref = gen_status.clone();
+                    let status_label = status_label.clone();
+
+                    rollback_btn.connect_clicked(move |btn| {
+                        btn.set_sensitive(false);
+                        btn.set_label("Rolling back…");
+                        gen_status_ref.set_text(&format!("Rolling back to generation #{}…", gen_id));
+                        status_label.set_text("Rollback in progress…");
+
+                        let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
+                        std::thread::spawn(move || {
+                            let _ = sender.send_blocking(nix_ops::run_system_rollback(gen_id));
+                        });
+
+                        let btn2 = btn.clone();
+                        let gen_status2 = gen_status_ref.clone();
+                        let status_label2 = status_label.clone();
+
+                        glib::MainContext::default().spawn_local(async move {
+                            if let Ok(result) = receiver.recv().await {
+                                match result {
+                                    Ok(()) => {
+                                        gen_status2.set_text(&format!(
+                                            "Rolled back to generation #{}. Reboot to activate.", gen_id
+                                        ));
+                                        status_label2.set_text("Rollback complete.");
+                                    }
+                                    Err(ref e) => {
+                                        btn2.set_sensitive(true);
+                                        btn2.set_label("Roll Back");
+                                        gen_status2.set_text(&format!("Rollback failed: {}", e));
+                                        status_label2.set_text("Rollback failed.");
+                                    }
+                                }
+                            }
+                        });
+                    });
+
+                    row.append(&rollback_btn);
+                }
+
+                let list_row = gtk4::ListBoxRow::new();
+                list_row.set_child(Some(&row));
+                gen_list_box.append(&list_row);
+            }
+        }
+        Err(ref e) => {
+            gen_status.set_text(&format!("Could not load generations: {}", e));
+        }
+    }
+
+    vbox.append(&gen_list_box);
+    vbox.append(&gen_status);
+
     vbox
 }
 

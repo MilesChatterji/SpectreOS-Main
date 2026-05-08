@@ -432,6 +432,110 @@ pub fn run_system_upgrade(version: &str) -> Result<(), String> {
     }
 }
 
+pub fn run_system_rebuild() -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = format!(
+        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
+        home, existing_path
+    );
+    let output = std::process::Command::new("bash")
+        .env("PATH", &extended_path)
+        .env("HOME", &home)
+        .args(["-l", "-c", "sudo /etc/spectreos/rebuild-helper.sh"])
+        .output()
+        .map_err(|e| format!("failed to launch rebuild: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(format!(
+            "rebuild exited with code {}{}",
+            output.status.code().unwrap_or(-1),
+            if !tail.is_empty() { format!("\n{}", tail) } else { String::new() }
+        ))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NixosGeneration {
+    pub id: u32,
+    pub date: String,
+    pub current: bool,
+}
+
+pub fn list_generations() -> Result<Vec<NixosGeneration>, String> {
+    let output = std::process::Command::new("nix-env")
+        .args(["--list-generations", "--profile", "/nix/var/nix/profiles/system"])
+        .output()
+        .map_err(|e| format!("failed to list generations: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut gens: Vec<NixosGeneration> = stdout
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 3 { return None; }
+            let id: u32 = parts[0].parse().ok()?;
+            let date = format!("{} {}", parts[1], parts[2]);
+            let current = line.contains("(current)");
+            Some(NixosGeneration { id, date, current })
+        })
+        .collect();
+    gens.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(gens)
+}
+
+pub fn run_system_rollback(generation: u32) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = format!(
+        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
+        home, existing_path
+    );
+    let cmd = format!("sudo /etc/spectreos/rollback-helper.sh {}", generation);
+    let output = std::process::Command::new("bash")
+        .env("PATH", &extended_path)
+        .env("HOME", &home)
+        .args(["-l", "-c", &cmd])
+        .output()
+        .map_err(|e| format!("failed to launch rollback: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(format!(
+            "rollback exited with code {}{}",
+            output.status.code().unwrap_or(-1),
+            if !tail.is_empty() { format!("\n{}", tail) } else { String::new() }
+        ))
+    }
+}
+
 fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }

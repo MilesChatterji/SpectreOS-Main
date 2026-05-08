@@ -326,9 +326,33 @@ in
     mode = "0755";
   };
 
-  # Allow wheel-group users to run the upgrade helper without a password prompt.
+  environment.etc."spectreos/rebuild-helper.sh" = {
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+      export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$PATH"
+      nixos-rebuild switch
+    '';
+    mode = "0755";
+  };
+
+  environment.etc."spectreos/rollback-helper.sh" = {
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+      GENERATION="''${1:?Usage: rollback-helper.sh <generation>}"
+      export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$PATH"
+      nix-env --switch-generation "$GENERATION" --profile /nix/var/nix/profiles/system
+      /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+    '';
+    mode = "0755";
+  };
+
+  # Allow wheel-group users to run the SpectreOS helper scripts without a password prompt.
   security.sudo.extraConfig = ''
     %wheel ALL=(root) NOPASSWD: /etc/spectreos/upgrade-helper.sh *
+    %wheel ALL=(root) NOPASSWD: /etc/spectreos/rebuild-helper.sh
+    %wheel ALL=(root) NOPASSWD: /etc/spectreos/rollback-helper.sh *
   '';
 
   networking.firewall = {
