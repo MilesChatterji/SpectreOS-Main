@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Button, CheckButton, Label, ListBox,
-    ListBoxRow, Orientation, PolicyType, ScrolledWindow, SearchEntry, SelectionMode,
+    ListBoxRow, Notebook, Orientation, PolicyType, ScrolledWindow, SearchEntry, SelectionMode,
     Separator,
 };
 use std::cell::RefCell;
@@ -81,9 +81,7 @@ impl State {
 }
 
 fn main() -> glib::ExitCode {
-    let app = Application::builder()
-        .application_id(APP_ID)
-        .build();
+    let app = Application::builder().application_id(APP_ID).build();
     app.connect_activate(build_ui);
     app.run()
 }
@@ -97,7 +95,6 @@ fn build_ui(app: &Application) {
         staged_remove: HashSet::new(),
     }));
 
-    // CSS for update badge and staging indicators
     let css = gtk4::CssProvider::new();
     css.load_from_string(
         ".update-badge { color: #3584e4; font-size: 0.8em; \
@@ -129,19 +126,50 @@ fn build_ui(app: &Application) {
     title.set_halign(Align::Start);
     root.append(&title);
 
-    let search_row = GtkBox::new(Orientation::Horizontal, 8);
+    // ── Shared persistent widgets ────────────────────────────────────────
+    let staged_list = ListBox::new();
+    staged_list.set_selection_mode(SelectionMode::None);
+    let sp = Label::new(Some("No changes staged"));
+    staged_list.set_placeholder(Some(&sp));
+
+    let status_label = Label::new(Some(""));
+    status_label.set_halign(Align::Start);
+
+    let apply_btn = Button::with_label("Install");
+    apply_btn.add_css_class("suggested-action");
+    apply_btn.set_sensitive(false);
+
+    let update_all_btn = Button::with_label("Update All");
+    update_all_btn.add_css_class("suggested-action");
+    update_all_btn.set_sensitive(false);
+
+    // ── Tab 1: Installed ─────────────────────────────────────────────────
+    let installed_list = ListBox::new();
+    installed_list.set_selection_mode(SelectionMode::None);
+    let ip = Label::new(Some("No packages installed yet"));
+    installed_list.set_placeholder(Some(&ip));
+    let installed_scroll = ScrolledWindow::builder()
+        .vexpand(true)
+        .hscrollbar_policy(PolicyType::Never)
+        .child(&installed_list)
+        .build();
+
+    let installed_tab = GtkBox::new(Orientation::Vertical, 0);
+    installed_tab.append(&installed_scroll);
+
+    // ── Tab 2: Browse ────────────────────────────────────────────────────
     let search = SearchEntry::new();
     search.set_hexpand(true);
     search.set_placeholder_text(Some("Search nixpkgs — e.g. helix, micro, obsidian"));
-    search_row.append(&search);
+
     let unstable_check = CheckButton::with_label("Include unstable");
     unstable_check.set_valign(Align::Center);
-    search_row.append(&unstable_check);
-    root.append(&search_row);
 
-    let results_label = Label::new(Some("Results"));
-    results_label.set_halign(Align::Start);
-    root.append(&results_label);
+    let search_row = GtkBox::new(Orientation::Horizontal, 8);
+    search_row.set_margin_top(8);
+    search_row.set_margin_bottom(4);
+    search_row.append(&search);
+    search_row.append(&unstable_check);
 
     let results_list = ListBox::new();
     results_list.set_selection_mode(SelectionMode::None);
@@ -152,18 +180,28 @@ fn build_ui(app: &Application) {
         .hscrollbar_policy(PolicyType::Never)
         .child(&results_list)
         .build();
-    root.append(&results_scroll);
 
+    let browse_tab = GtkBox::new(Orientation::Vertical, 4);
+    browse_tab.append(&search_row);
+    browse_tab.append(&results_scroll);
+
+    // ── Tab 3: System ────────────────────────────────────────────────────
+    let system_tab = build_system_tab(&status_label);
+
+    // ── Notebook ─────────────────────────────────────────────────────────
+    let notebook = Notebook::new();
+    notebook.set_vexpand(true);
+    notebook.append_page(&installed_tab, Some(&Label::new(Some("Installed"))));
+    notebook.append_page(&browse_tab, Some(&Label::new(Some("Browse"))));
+    notebook.append_page(&system_tab, Some(&Label::new(Some("System"))));
+    root.append(&notebook);
+
+    // ── Staging area (persistent below notebook) ─────────────────────────
     root.append(&Separator::new(Orientation::Horizontal));
-
-    let staged_label = Label::new(Some("Install/Uninstall Staging"));
+    let staged_label = Label::new(Some("Staged Changes"));
     staged_label.set_halign(Align::Start);
     root.append(&staged_label);
 
-    let staged_list = ListBox::new();
-    staged_list.set_selection_mode(SelectionMode::None);
-    let sp = Label::new(Some("No changes staged"));
-    staged_list.set_placeholder(Some(&sp));
     let staged_scroll = ScrolledWindow::builder()
         .min_content_height(80)
         .vexpand(false)
@@ -172,41 +210,16 @@ fn build_ui(app: &Application) {
         .build();
     root.append(&staged_scroll);
 
-    root.append(&Separator::new(Orientation::Horizontal));
-
-    let installed_label = Label::new(Some("Installed Apps"));
-    installed_label.set_halign(Align::Start);
-    root.append(&installed_label);
-
-    let installed_list = ListBox::new();
-    installed_list.set_selection_mode(SelectionMode::None);
-    let ip = Label::new(Some("No packages installed yet"));
-    installed_list.set_placeholder(Some(&ip));
-    let installed_scroll = ScrolledWindow::builder()
-        .min_content_height(100)
-        .vexpand(false)
-        .hscrollbar_policy(PolicyType::Never)
-        .child(&installed_list)
-        .build();
-    root.append(&installed_scroll);
-
-    let status_label = Label::new(Some(""));
-    status_label.set_halign(Align::Start);
     root.append(&status_label);
 
+    // ── Bottom bar ───────────────────────────────────────────────────────
     let bottom_bar = GtkBox::new(Orientation::Horizontal, 8);
     let quit_btn = Button::with_label("Quit");
     bottom_bar.append(&quit_btn);
     let spacer = Label::new(None);
     spacer.set_hexpand(true);
     bottom_bar.append(&spacer);
-    let update_all_btn = Button::with_label("Update All");
-    update_all_btn.add_css_class("suggested-action");
-    update_all_btn.set_sensitive(false);
     bottom_bar.append(&update_all_btn);
-    let apply_btn = Button::with_label("Install");
-    apply_btn.add_css_class("suggested-action");
-    apply_btn.set_sensitive(false);
     bottom_bar.append(&apply_btn);
     root.append(&bottom_bar);
 
@@ -216,13 +229,13 @@ fn build_ui(app: &Application) {
 
     window.present();
 
-    // Quit
+    // ── Quit ─────────────────────────────────────────────────────────────
     {
         let window = window.clone();
         quit_btn.connect_clicked(move |_| window.close());
     }
 
-    // Search
+    // ── Search (Tab 2) ────────────────────────────────────────────────────
     let trigger_search = {
         let results_list = results_list.clone();
         let staged_list = staged_list.clone();
@@ -278,7 +291,7 @@ fn build_ui(app: &Application) {
         unstable_check.connect_toggled(move |_| trigger());
     }
 
-    // Channel update on launch
+    // ── Version check on launch ───────────────────────────────────────────
     {
         let state = state.clone();
         let status_label = status_label.clone();
@@ -298,9 +311,7 @@ fn build_ui(app: &Application) {
         if !managed.is_empty() {
             status_label.set_text("Checking for updates…");
 
-            let (sender, receiver) =
-                async_channel::bounded::<HashMap<String, String>>(1);
-
+            let (sender, receiver) = async_channel::bounded::<HashMap<String, String>>(1);
             std::thread::spawn(move || {
                 let _ = sender.send_blocking(nix_ops::fetch_available_versions(&managed));
             });
@@ -325,7 +336,7 @@ fn build_ui(app: &Application) {
         }
     }
 
-    // Apply staged changes
+    // ── Apply staged changes ──────────────────────────────────────────────
     {
         let state = state.clone();
         let status_label = status_label.clone();
@@ -369,7 +380,6 @@ fn build_ui(app: &Application) {
                     match result {
                         Ok(()) => {
                             status2.set_text("Done! Changes applied.");
-
                             {
                                 let mut s = state2.borrow_mut();
                                 s.installed = final_packages.clone();
@@ -377,15 +387,12 @@ fn build_ui(app: &Application) {
                                 s.staged_add.clear();
                                 s.staged_remove.clear();
                             }
-
                             while let Some(child) = staged2.first_child() {
                                 staged2.remove(&child);
                             }
-
                             rebuild_installed_list(&installed2, &staged2, &state2, &btn2);
                             update_apply_btn(&btn2, &state2);
                             update_all_btn2.set_sensitive(state2.borrow().any_updates());
-
                             search2.set_text("");
                             while let Some(child) = results2.first_child() {
                                 results2.remove(&child);
@@ -401,7 +408,7 @@ fn build_ui(app: &Application) {
         });
     }
 
-    // Update All
+    // ── Update All ────────────────────────────────────────────────────────
     {
         let state = state.clone();
         let status_label = status_label.clone();
@@ -442,7 +449,6 @@ fn build_ui(app: &Application) {
                             };
                             let versions = state2.borrow().installed_versions.clone();
                             let _ = nix_ops::write_extra_packages(&pkgs, &versions);
-
                             status2.set_text("All packages updated.");
                             rebuild_installed_list(&installed2, &staged2, &state2, &apply_btn2);
                             btn2.set_sensitive(false);
@@ -458,7 +464,148 @@ fn build_ui(app: &Application) {
     }
 }
 
-/// Update the Install/Uninstall button label and sensitivity based on staged state.
+fn build_system_tab(status_label: &Label) -> GtkBox {
+    let vbox = GtkBox::new(Orientation::Vertical, 12);
+    vbox.set_margin_top(16);
+    vbox.set_margin_bottom(16);
+    vbox.set_margin_start(16);
+    vbox.set_margin_end(16);
+    vbox.set_valign(Align::Start);
+
+    let current_ver = nix_ops::nixos_version();
+    let next_ver = nix_ops::next_nixos_version(&current_ver).unwrap_or_default();
+
+    let version_row = GtkBox::new(Orientation::Horizontal, 8);
+    let ver_title = Label::new(Some("Current NixOS version:"));
+    ver_title.set_halign(Align::Start);
+    let ver_value = Label::new(Some(if current_ver.is_empty() { "unknown" } else { &current_ver }));
+    ver_value.add_css_class("title-4");
+    version_row.append(&ver_title);
+    version_row.append(&ver_value);
+    vbox.append(&version_row);
+
+    if next_ver.is_empty() {
+        let msg = Label::new(Some("Could not determine the next release version."));
+        msg.add_css_class("dim-label");
+        msg.set_halign(Align::Start);
+        vbox.append(&msg);
+        return vbox;
+    }
+
+    let upgrade_status = Label::new(Some(""));
+    upgrade_status.set_halign(Align::Start);
+
+    let upgrade_btn = Button::with_label(&format!("Upgrade to {}", next_ver));
+    upgrade_btn.add_css_class("suggested-action");
+    upgrade_btn.set_sensitive(false);
+    upgrade_btn.set_visible(false);
+    upgrade_btn.set_halign(Align::Start);
+
+    let check_btn = Button::with_label("Check for Upgrade");
+    check_btn.set_halign(Align::Start);
+
+    // Check for upgrade
+    {
+        let upgrade_status = upgrade_status.clone();
+        let upgrade_btn = upgrade_btn.clone();
+        let check_btn_ref = check_btn.clone();
+        let next_ver = next_ver.clone();
+
+        check_btn.connect_clicked(move |btn| {
+            btn.set_sensitive(false);
+            btn.set_label("Checking…");
+            upgrade_status.set_text("Checking availability…");
+
+            let (sender, receiver) = async_channel::bounded::<bool>(1);
+            let ver = next_ver.clone();
+            std::thread::spawn(move || {
+                let _ = sender.send_blocking(nix_ops::check_upgrade_available(&ver));
+            });
+
+            let btn2 = check_btn_ref.clone();
+            let upgrade_status2 = upgrade_status.clone();
+            let upgrade_btn2 = upgrade_btn.clone();
+            let next_ver2 = next_ver.clone();
+
+            glib::MainContext::default().spawn_local(async move {
+                if let Ok(available) = receiver.recv().await {
+                    btn2.set_label("Check for Upgrade");
+                    btn2.set_sensitive(true);
+                    if available {
+                        upgrade_status2.set_text(&format!("NixOS {} is available!", next_ver2));
+                        upgrade_btn2.set_visible(true);
+                        upgrade_btn2.set_sensitive(true);
+                    } else {
+                        upgrade_status2.set_text(&format!("NixOS {} is not yet available.", next_ver2));
+                    }
+                }
+            });
+        });
+    }
+
+    // Run upgrade
+    {
+        let upgrade_btn_ref = upgrade_btn.clone();
+        let upgrade_status = upgrade_status.clone();
+        let check_btn = check_btn.clone();
+        let status_label = status_label.clone();
+        let next_ver = next_ver.clone();
+
+        upgrade_btn.connect_clicked(move |btn| {
+            btn.set_sensitive(false);
+            btn.set_label("Upgrading…");
+            check_btn.set_sensitive(false);
+            upgrade_status.set_text("Running system upgrade — this will take a while…");
+            status_label.set_text("System upgrade in progress…");
+
+            let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
+            let ver = next_ver.clone();
+            std::thread::spawn(move || {
+                let _ = sender.send_blocking(nix_ops::run_system_upgrade(&ver));
+            });
+
+            let btn2 = upgrade_btn_ref.clone();
+            let upgrade_status2 = upgrade_status.clone();
+            let check_btn2 = check_btn.clone();
+            let status_label2 = status_label.clone();
+            let next_ver2 = next_ver.clone();
+
+            glib::MainContext::default().spawn_local(async move {
+                if let Ok(result) = receiver.recv().await {
+                    check_btn2.set_sensitive(true);
+                    match result {
+                        Ok(()) => {
+                            btn2.set_visible(false);
+                            upgrade_status2.set_text(&format!(
+                                "Upgrade to {} complete! Reboot to finish.", next_ver2
+                            ));
+                            status_label2.set_text(&format!("System upgraded to {}", next_ver2));
+                        }
+                        Err(ref e) => {
+                            btn2.set_sensitive(true);
+                            btn2.set_label(&format!("Upgrade to {}", next_ver2));
+                            upgrade_status2.set_text(&format!("Upgrade failed: {}", e));
+                            status_label2.set_text("Upgrade failed.");
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    vbox.append(&check_btn);
+    vbox.append(&upgrade_status);
+    vbox.append(&upgrade_btn);
+
+    let note = Label::new(Some("A reboot is required after upgrading to complete the transition."));
+    note.add_css_class("dim-label");
+    note.set_halign(Align::Start);
+    note.set_wrap(true);
+    vbox.append(&note);
+
+    vbox
+}
+
 fn update_apply_btn(btn: &Button, state: &Rc<RefCell<State>>) {
     let s = state.borrow();
     let has_adds = !s.staged_add.is_empty();
@@ -484,7 +631,6 @@ fn rebuild_installed_list(
     }
     let installed = state.borrow().installed.clone();
     for raw in &installed {
-        // Items staged for removal are shown in the staging area, not here.
         if state.borrow().staged_remove.contains(raw) { continue; }
         let pname = raw.split('.').last().unwrap_or(raw.as_str()).to_string();
         let row = make_installed_row(
@@ -584,7 +730,6 @@ fn make_result_row(
     row
 }
 
-/// Staged row for a package being INSTALLED (shows green + badge).
 fn make_staged_install_row(
     pname: String,
     state: Rc<RefCell<State>>,
@@ -636,8 +781,6 @@ fn make_staged_install_row(
     row
 }
 
-/// Staged row for a package being REMOVED (shows red − badge).
-/// The × button restores the package to the installed list.
 fn make_staged_remove_row(
     pname: String,
     raw: String,
@@ -707,7 +850,6 @@ fn make_installed_row(
 
     let has_update = state.borrow().has_update(&pname);
 
-    // Name row — includes blue "Update" pill when an update is available.
     let name_row = GtkBox::new(Orientation::Horizontal, 4);
     name_row.set_halign(Align::Start);
     let name_label = Label::new(Some(&pname));
@@ -721,7 +863,6 @@ fn make_installed_row(
     }
     info.append(&name_row);
 
-    // Version info row (dim).
     let installed_v = state.borrow().installed_versions.get(&pname).cloned();
     let available_v = state.borrow().available_versions.get(&pname).cloned();
 

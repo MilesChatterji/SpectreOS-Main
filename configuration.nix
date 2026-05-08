@@ -310,6 +310,27 @@ in
     gnome-color-manager   # Includes gcm-picker (on-screen color picker)
   ];
 
+  # System release upgrade helper — invoked by the SpectreOS Updater via sudo.
+  # Updates nixos + home-manager channels then runs nixos-rebuild switch --upgrade.
+  environment.etc."spectreos/upgrade-helper.sh" = {
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+      VERSION="''${1:?Usage: upgrade-helper.sh <version>}"
+      export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$PATH"
+      nix-channel --add "https://nixos.org/channels/nixos-$VERSION" nixos
+      nix-channel --add "https://github.com/nix-community/home-manager/archive/release-$VERSION.tar.gz" home-manager
+      nix-channel --update
+      nixos-rebuild switch --upgrade
+    '';
+    mode = "0755";
+  };
+
+  # Allow wheel-group users to run the upgrade helper without a password prompt.
+  security.sudo.extraConfig = ''
+    %wheel ALL=(root) NOPASSWD: /etc/spectreos/upgrade-helper.sh *
+  '';
+
   networking.firewall = {
     allowedTCPPorts = [];
     allowedUDPPorts = [];

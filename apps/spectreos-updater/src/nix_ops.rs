@@ -354,6 +354,88 @@ fn insert_before_last_brace(content: &str, new_block: &str) -> String {
     }
 }
 
+pub fn nixos_version() -> String {
+    std::fs::read_to_string("/run/current-system/nixos-version")
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+/// Compute the next NixOS release from a version string like "25.11.20260501.abc1234".
+/// NixOS releases: YY.05 (May) and YY.11 (November).
+pub fn next_nixos_version(current: &str) -> Option<String> {
+    let parts: Vec<&str> = current.split('.').collect();
+    if parts.len() < 2 { return None; }
+    let year: u32 = parts[0].trim().parse().ok()?;
+    let month_str: String = parts[1].chars().take_while(|c| c.is_ascii_digit()).collect();
+    let month: u32 = month_str.parse().ok()?;
+    let (ny, nm) = if month < 11 { (year, 11u32) } else { (year + 1, 5u32) };
+    Some(format!("{}.{:02}", ny, nm))
+}
+
+/// Returns true if the channels.nixos.org channel for `version` responds with a redirect/200.
+pub fn check_upgrade_available(version: &str) -> bool {
+    let url = format!("https://channels.nixos.org/nixos-{}", version);
+    let output = std::process::Command::new("curl")
+        .args([
+            "-s", "-o", "/dev/null",
+            "-w", "%{http_code}",
+            "--max-time", "10",
+            "--head",
+            &url,
+        ])
+        .output();
+    match output {
+        Ok(o) => {
+            let c = String::from_utf8_lossy(&o.stdout);
+            let c = c.trim();
+            c == "200" || c == "301" || c == "302"
+        }
+        Err(_) => false,
+    }
+}
+
+/// Run the system upgrade via the sudoers-allowed helper script at /etc/spectreos/upgrade-helper.sh.
+pub fn run_system_upgrade(version: &str) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = format!(
+        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
+        home, existing_path
+    );
+    let cmd = format!("sudo /etc/spectreos/upgrade-helper.sh {}", shell_escape(version));
+    let output = std::process::Command::new("bash")
+        .env("PATH", &extended_path)
+        .env("HOME", &home)
+        .args(["-l", "-c", &cmd])
+        .output()
+        .map_err(|e| format!("failed to launch upgrade: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(format!(
+            "upgrade exited with code {}{}",
+            output.status.code().unwrap_or(-1),
+            if !tail.is_empty() { format!("\n{}", tail) } else { String::new() }
+        ))
+    }
+}
+
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 pub fn run_home_manager() -> Result<(), String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let existing_path = std::env::var("PATH").unwrap_or_default();
