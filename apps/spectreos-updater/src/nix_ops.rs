@@ -475,8 +475,8 @@ pub struct NixosGeneration {
 }
 
 pub fn list_generations() -> Result<Vec<NixosGeneration>, String> {
-    let output = std::process::Command::new("nix-env")
-        .args(["--list-generations", "--profile", "/nix/var/nix/profiles/system"])
+    let output = std::process::Command::new("sudo")
+        .args(["/etc/spectreos/list-generations-helper.sh"])
         .output()
         .map_err(|e| format!("failed to list generations: {}", e))?;
 

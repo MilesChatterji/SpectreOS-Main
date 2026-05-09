@@ -68,6 +68,7 @@ impl State {
     fn has_update(&self, pname: &str) -> bool {
         match (self.installed_versions.get(pname), self.available_versions.get(pname)) {
             (Some(installed), Some(available)) => installed != available,
+            (None, Some(_)) => true,
             _ => false,
         }
     }
