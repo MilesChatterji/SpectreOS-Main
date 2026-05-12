@@ -403,7 +403,7 @@ pub fn run_system_upgrade(version: &str) -> Result<(), String> {
         "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
         home, existing_path
     );
-    let cmd = format!("sudo /etc/spectreos/upgrade-helper.sh {}", shell_escape(version));
+    let cmd = format!("/run/wrappers/bin/sudo /etc/spectreos/upgrade-helper.sh {}", shell_escape(version));
     let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
         .env("HOME", &home)
@@ -442,7 +442,7 @@ pub fn run_system_rebuild() -> Result<(), String> {
     let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
         .env("HOME", &home)
-        .args(["-l", "-c", "sudo /etc/spectreos/rebuild-helper.sh"])
+        .args(["-l", "-c", "/run/wrappers/bin/sudo /etc/spectreos/rebuild-helper.sh"])
         .output()
         .map_err(|e| format!("failed to launch rebuild: {}", e))?;
 
@@ -475,7 +475,7 @@ pub struct NixosGeneration {
 }
 
 pub fn list_generations() -> Result<Vec<NixosGeneration>, String> {
-    let output = std::process::Command::new("sudo")
+    let output = std::process::Command::new("/run/wrappers/bin/sudo")
         .args(["/etc/spectreos/list-generations-helper.sh"])
         .output()
         .map_err(|e| format!("failed to list generations: {}", e))?;
@@ -507,7 +507,7 @@ pub fn run_system_rollback(generation: u32) -> Result<(), String> {
         "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
         home, existing_path
     );
-    let cmd = format!("sudo /etc/spectreos/rollback-helper.sh {}", generation);
+    let cmd = format!("/run/wrappers/bin/sudo /etc/spectreos/rollback-helper.sh {}", generation);
     let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
         .env("HOME", &home)
