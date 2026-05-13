@@ -540,6 +540,32 @@ fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// Read the nix-path / extra-nix-path entries from /etc/nix/nix.conf.
+/// Returns a colon-separated string suitable for appending to NIX_PATH.
+/// nix.nixPath in configuration.nix writes here, but bash -l only picks up
+/// per-user channel paths. If NIX_PATH is set, Nix ignores nix.conf's nix-path,
+/// so we must append it explicitly to NIX_PATH before running home-manager.
+fn nix_conf_search_path() -> String {
+    let conf = std::fs::read_to_string("/etc/nix/nix.conf").unwrap_or_default();
+    let mut paths: Vec<String> = Vec::new();
+    for line in conf.lines() {
+        let t = line.trim();
+        let val = if let Some(v) = t.strip_prefix("nix-path=").or_else(|| t.strip_prefix("nix-path =")) {
+            v.trim()
+        } else if let Some(v) = t.strip_prefix("extra-nix-path=").or_else(|| t.strip_prefix("extra-nix-path =")) {
+            v.trim()
+        } else {
+            continue;
+        };
+        for entry in val.split_whitespace() {
+            if !entry.is_empty() {
+                paths.push(entry.to_string());
+            }
+        }
+    }
+    paths.join(":")
+}
+
 pub fn run_home_manager() -> Result<(), String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let existing_path = std::env::var("PATH").unwrap_or_default();
@@ -548,20 +574,25 @@ pub fn run_home_manager() -> Result<(), String> {
         home, existing_path
     );
 
-    // The updater is launched as a GUI app and does not inherit the login-shell
-    // environment. home-manager's binary relies entirely on NIX_PATH (from channels)
-    // to find its own Nix modules — it does not set NIX_PATH itself.
-    // bash -l sources /etc/profile which sets NIX_PATH correctly (including the
-    // home-manager entry added via nix.nixPath in configuration.nix).
+    // bash -l sources /etc/profile which sets NIX_PATH from per-user channels.
+    // nix.nixPath in configuration.nix writes home-manager into nix.conf's nix-path,
+    // but Nix ignores nix.conf when NIX_PATH is already set in the environment.
+    // We append the nix.conf entries to whatever bash -l sets so both are visible.
+    let conf_path = nix_conf_search_path();
+    let cmd = if conf_path.is_empty() {
+        "home-manager switch -b backup --option max-jobs 2 --option cores 2".to_string()
+    } else {
+        format!(
+            "export NIX_PATH=\"${{NIX_PATH:+$NIX_PATH:}}{}\"; home-manager switch -b backup --option max-jobs 2 --option cores 2",
+            conf_path
+        )
+    };
+
     let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
         .env("HOME", &home)
         .env_remove("NIX_PATH")
-        .args([
-            "-l",
-            "-c",
-            "home-manager switch -b backup --option max-jobs 2 --option cores 2",
-        ])
+        .args(["-l", "-c", &cmd])
         .output()
         .map_err(|e| format!("failed to launch bash: {}", e))?;
 
