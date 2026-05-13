@@ -639,33 +639,115 @@ fn build_system_tab(status_label: &Label) -> GtkBox {
         let rebuild_status = rebuild_status.clone();
         let status_label = status_label.clone();
 
-        rebuild_btn.connect_clicked(move |btn| {
-            btn.set_sensitive(false);
-            btn.set_label("Applying…");
-            rebuild_status.set_text("Running system rebuild — this may take a few minutes…");
-            status_label.set_text("System update in progress…");
+        rebuild_btn.connect_clicked(move |_| {
+            let btn = rebuild_btn_ref.clone();
+            let rebuild_status = rebuild_status.clone();
+            let status_label = status_label.clone();
 
-            let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
+            btn.set_sensitive(false);
+            btn.set_label("Checking…");
+            rebuild_status.set_text("Checking what will change…");
+            status_label.set_text("Preparing update check…");
+
+            let (sender, receiver) = async_channel::bounded::<Result<nix_ops::DryBuildResult, String>>(1);
             std::thread::spawn(move || {
-                let _ = sender.send_blocking(nix_ops::run_system_rebuild());
+                let _ = sender.send_blocking(nix_ops::run_dry_build());
             });
 
-            let btn2 = rebuild_btn_ref.clone();
-            let rebuild_status2 = rebuild_status.clone();
-            let status_label2 = status_label.clone();
-
             glib::MainContext::default().spawn_local(async move {
-                if let Ok(result) = receiver.recv().await {
-                    btn2.set_sensitive(true);
-                    btn2.set_label("Apply Updates");
-                    match result {
-                        Ok(()) => {
-                            rebuild_status2.set_text("Updates applied. Reboot to activate kernel/driver changes.");
-                            status_label2.set_text("System updated.");
+                let Ok(dry_result) = receiver.recv().await else { return; };
+
+                match dry_result {
+                    Err(e) => {
+                        btn.set_sensitive(true);
+                        btn.set_label("Apply Updates");
+                        rebuild_status.set_text(&format!("Check failed: {}", e));
+                        status_label.set_text("Update check failed.");
+                    }
+                    Ok(dry) => {
+                        btn.set_sensitive(true);
+                        btn.set_label("Apply Updates");
+
+                        if dry.to_build == 0 && dry.to_fetch == 0 {
+                            rebuild_status.set_text("System is already up to date.");
+                            status_label.set_text("");
+                            return;
                         }
-                        Err(ref e) => {
-                            rebuild_status2.set_text(&format!("Update failed: {}", e));
-                            status_label2.set_text("System update failed.");
+
+                        let mut parts = Vec::new();
+                        if dry.to_build > 0 {
+                            parts.push(format!(
+                                "{} derivation{} to build",
+                                dry.to_build,
+                                if dry.to_build == 1 { "" } else { "s" }
+                            ));
+                        }
+                        if dry.to_fetch > 0 {
+                            let mib = if dry.fetch_mib > 0.0 {
+                                format!(" ({:.1} MiB)", dry.fetch_mib)
+                            } else {
+                                String::new()
+                            };
+                            parts.push(format!(
+                                "{} path{} to download{}",
+                                dry.to_fetch,
+                                if dry.to_fetch == 1 { "" } else { "s" },
+                                mib
+                            ));
+                        }
+                        let detail = parts.join("\n");
+
+                        let window = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+                        let confirm = gtk4::AlertDialog::builder()
+                            .message("Apply system updates?")
+                            .detail(&detail)
+                            .buttons(["Cancel", "Apply"])
+                            .cancel_button(0)
+                            .default_button(1)
+                            .build();
+
+                        let Ok(choice) = confirm.choose_future(window.as_ref()).await else { return; };
+                        if choice != 1 { return; }
+
+                        btn.set_sensitive(false);
+                        btn.set_label("Applying…");
+                        rebuild_status.set_text("Applying system updates — this may take a few minutes…");
+                        status_label.set_text("System update in progress…");
+
+                        let (sender2, receiver2) = async_channel::bounded::<Result<(), String>>(1);
+                        std::thread::spawn(move || {
+                            let _ = sender2.send_blocking(nix_ops::run_system_rebuild());
+                        });
+
+                        let Ok(rebuild_result) = receiver2.recv().await else { return; };
+
+                        btn.set_sensitive(true);
+                        btn.set_label("Apply Updates");
+
+                        match rebuild_result {
+                            Err(e) => {
+                                rebuild_status.set_text(&format!("Update failed: {}", e));
+                                status_label.set_text("System update failed.");
+                            }
+                            Ok(()) => {
+                                rebuild_status.set_text("Updates applied.");
+                                status_label.set_text("System updated.");
+
+                                let window2 = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+                                let reboot_dlg = gtk4::AlertDialog::builder()
+                                    .message("Reboot Required")
+                                    .detail("A reboot is needed to activate kernel and driver updates.")
+                                    .buttons(["Later", "Reboot Now"])
+                                    .cancel_button(0)
+                                    .default_button(1)
+                                    .build();
+
+                                if let Ok(1) = reboot_dlg.choose_future(window2.as_ref()).await {
+                                    let _ = std::process::Command::new("systemctl")
+                                        .arg("reboot")
+                                        .spawn();
+                                }
+                            }
                         }
                     }
                 }

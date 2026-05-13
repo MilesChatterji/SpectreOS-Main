@@ -432,6 +432,82 @@ pub fn run_system_upgrade(version: &str) -> Result<(), String> {
     }
 }
 
+pub struct DryBuildResult {
+    pub to_build: usize,
+    pub to_fetch: usize,
+    pub fetch_mib: f64,
+}
+
+fn parse_dry_build_output(output: &str) -> DryBuildResult {
+    let mut to_build = 0usize;
+    let mut to_fetch = 0usize;
+    let mut fetch_mib = 0.0f64;
+    for line in output.lines() {
+        let t = line.trim();
+        // "these 5 derivations will be built:" or "this derivation will be built:"
+        if let Some(rest) = t.strip_prefix("these ").or_else(|| t.strip_prefix("this ")) {
+            if let Some(num_end) = rest.find(|c: char| c == ' ' || !c.is_ascii_digit()) {
+                let num_str = &rest[..num_end];
+                let n: usize = num_str.parse().unwrap_or(1);
+                let tail = &rest[num_end..];
+                if tail.contains("derivation") && tail.contains("built") {
+                    to_build += n;
+                } else if tail.contains("path") && tail.contains("fetch") {
+                    to_fetch += n;
+                    // extract MiB from "(X.XX MiB download..."
+                    if let Some(p) = tail.find('(') {
+                        let after = &tail[p + 1..];
+                        if let Some(sp) = after.find(' ') {
+                            if let Ok(mib) = after[..sp].parse::<f64>() {
+                                fetch_mib = mib;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    DryBuildResult { to_build, to_fetch, fetch_mib }
+}
+
+pub fn run_dry_build() -> Result<DryBuildResult, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = format!(
+        "{}/.nix-profile/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:{}",
+        home, existing_path
+    );
+    let output = std::process::Command::new("/run/wrappers/bin/sudo")
+        .env("PATH", &extended_path)
+        .env("HOME", &home)
+        .args(["/etc/spectreos/dry-run-helper.sh"])
+        .output()
+        .map_err(|e| format!("failed to launch dry-build: {}", e))?;
+
+    if !output.status.success() {
+        let combined = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg = if !combined.is_empty() { combined } else { stderr };
+        let tail: String = msg
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "dry-build exited with code {}{}",
+            output.status.code().unwrap_or(-1),
+            if !tail.is_empty() { format!("\n{}", tail) } else { String::new() }
+        ));
+    }
+
+    let combined = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_dry_build_output(&combined))
+}
+
 pub fn run_system_rebuild() -> Result<(), String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let existing_path = std::env::var("PATH").unwrap_or_default();
