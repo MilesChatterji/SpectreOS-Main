@@ -154,16 +154,6 @@ NIXEOF
 info "Installing SpectreOS (this will take a while)..."
 nixos-install --no-root-passwd
 
-# --- home-manager channel (root) ---
-# home-manager's binary does not set its own NIX_PATH; it relies on <home-manager/...>
-# resolving via channels. Adding it to root's channels means /etc/profile makes it
-# available to all users without requiring a separate per-user channel setup.
-info "Adding home-manager channel..."
-nixos-enter --root /mnt -- nix-channel --add \
-  https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz \
-  home-manager
-nixos-enter --root /mnt -- nix-channel --update home-manager
-
 # --- default configs and branding ---
 info "Installing default configurations..."
 nixos-enter --root /mnt -- mkdir -p \
