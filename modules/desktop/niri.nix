@@ -141,7 +141,7 @@ let
 in
 {
   environment.systemPackages = with pkgs; [
-    niri
+    unstable.niri
     xwayland-satellite
     unstable.noctalia-shell  # 4.7.6 — noctalia-qs bundled, idle management built-in
     brightnessctl-manual
