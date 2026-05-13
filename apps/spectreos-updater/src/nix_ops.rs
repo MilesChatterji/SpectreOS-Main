@@ -548,16 +548,14 @@ pub fn run_home_manager() -> Result<(), String> {
         home, existing_path
     );
 
-    // Do NOT use bash -l. Login shells source /etc/profile which sets NIX_PATH from
-    // per-user channels (nixos only on a fresh VM). Once NIX_PATH is set in the
-    // environment, Nix ignores nix.conf's nix-path entirely — hiding the
-    // home-manager entry written by nix.nixPath in configuration.nix.
-    // With NIX_PATH unset and no login shell, Nix reads nix.conf directly and
-    // finds home-manager without any manual parsing on our side.
+    // NIX_PATH is inherited from the GUI session environment. greetd/PAM sets it at
+    // login from nix.nixPath (via /etc/set-environment), so it already contains
+    // home-manager=... before the updater starts. nix.conf does NOT have a nix-path
+    // entry on NixOS 25.11 — the value lives in the session env, not nix.conf.
+    // Do NOT remove NIX_PATH; do NOT use bash -l (login shell re-exports can vary).
     let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
         .env("HOME", &home)
-        .env_remove("NIX_PATH")
         .args(["-c", "home-manager switch -b backup --option max-jobs 2 --option cores 2"])
         .output()
         .map_err(|e| format!("failed to launch bash: {}", e))?;
