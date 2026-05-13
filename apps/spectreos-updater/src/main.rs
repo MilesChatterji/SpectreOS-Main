@@ -135,6 +135,7 @@ fn build_ui(app: &Application) {
 
     let status_label = Label::new(Some(""));
     status_label.set_halign(Align::Start);
+    status_label.set_wrap(true);
 
     let apply_btn = Button::with_label("Install");
     apply_btn.add_css_class("suggested-action");
@@ -188,13 +189,18 @@ fn build_ui(app: &Application) {
 
     // ── Tab 3: System ────────────────────────────────────────────────────
     let system_tab = build_system_tab(&status_label);
+    let system_scroll = ScrolledWindow::builder()
+        .vexpand(true)
+        .hscrollbar_policy(PolicyType::Never)
+        .child(&system_tab)
+        .build();
 
     // ── Notebook ─────────────────────────────────────────────────────────
     let notebook = Notebook::new();
     notebook.set_vexpand(true);
     notebook.append_page(&installed_tab, Some(&Label::new(Some("Installed"))));
     notebook.append_page(&browse_tab, Some(&Label::new(Some("Browse"))));
-    notebook.append_page(&system_tab, Some(&Label::new(Some("System"))));
+    notebook.append_page(&system_scroll, Some(&Label::new(Some("System"))));
     root.append(&notebook);
 
     // ── Staging area (persistent below notebook) ─────────────────────────
