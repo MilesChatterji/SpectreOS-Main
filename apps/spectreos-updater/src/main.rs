@@ -192,6 +192,7 @@ fn build_ui(app: &Application) {
     let system_scroll = ScrolledWindow::builder()
         .vexpand(true)
         .hscrollbar_policy(PolicyType::Never)
+        .min_content_height(150)
         .child(&system_tab)
         .build();
 
