@@ -154,6 +154,16 @@ NIXEOF
 info "Installing SpectreOS (this will take a while)..."
 nixos-install --no-root-passwd
 
+# --- channel setup ---
+# Bring the nixos channel up to date so the first Apply Updates is not a no-op.
+# nixos-install pins the channel to the ISO's state; updating here ensures the
+# installed system starts with the latest 25.11 packages (e.g. current kernel).
+# Also register the unstable channel URL for root without downloading it —
+# ready for when the VM config moves to import <unstable> like the host.
+info "Updating nixos channel..."
+nixos-enter --root /mnt -- nix-channel --update nixos
+nixos-enter --root /mnt -- nix-channel --add https://channels.nixos.org/nixos-unstable unstable
+
 # --- default configs and branding ---
 info "Installing default configurations..."
 nixos-enter --root /mnt -- mkdir -p \
