@@ -199,9 +199,9 @@ fn build_ui(app: &Application) {
     // ── Notebook ─────────────────────────────────────────────────────────
     let notebook = Notebook::new();
     notebook.set_vexpand(true);
-    notebook.append_page(&installed_tab, Some(&Label::new(Some("Installed"))));
-    notebook.append_page(&browse_tab, Some(&Label::new(Some("Browse"))));
-    notebook.append_page(&system_scroll, Some(&Label::new(Some("System"))));
+    notebook.append_page(&installed_tab, Some(&Label::new(Some("Installed Apps"))));
+    notebook.append_page(&browse_tab, Some(&Label::new(Some("Search Apps"))));
+    notebook.append_page(&system_scroll, Some(&Label::new(Some("System Updates"))));
     root.append(&notebook);
 
     // ── Staging area (persistent below notebook) ─────────────────────────
@@ -1055,7 +1055,7 @@ fn make_installed_row(
 
     hbox.append(&info);
 
-    let rm = Button::with_label("Remove");
+    let rm = Button::with_label("Uninstall");
     rm.add_css_class("destructive-action");
     rm.set_valign(Align::Center);
 
