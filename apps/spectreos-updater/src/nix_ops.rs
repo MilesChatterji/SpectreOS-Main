@@ -556,7 +556,9 @@ pub fn run_home_manager() -> Result<(), String> {
     let output = std::process::Command::new("bash")
         .env("PATH", &extended_path)
         .env("HOME", &home)
-        .args(["-c", "home-manager switch -b backup --option max-jobs 2 --option cores 2"])
+        // Timestamp suffix avoids collisions when GTK or other apps regenerate files
+        // that home-manager previously backed up with the fixed 'backup' extension.
+        .args(["-c", "home-manager switch -b \"hmbak$(date +%s)\" --option max-jobs 2 --option cores 2"])
         .output()
         .map_err(|e| format!("failed to launch bash: {}", e))?;
 
