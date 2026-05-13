@@ -472,6 +472,23 @@ pub struct NixosGeneration {
     pub id: u32,
     pub date: String,
     pub current: bool,
+    pub kernel: String,
+}
+
+fn kernel_version_for_gen(id: u32) -> String {
+    let modules = format!(
+        "/nix/var/nix/profiles/system-{}-link/kernel-modules/lib/modules",
+        id
+    );
+    std::fs::read_dir(&modules)
+        .ok()
+        .and_then(|mut d| d.next())
+        .and_then(|e| e.ok())
+        .map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.strip_suffix("-nixos").unwrap_or(&name).to_string()
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub fn list_generations() -> Result<Vec<NixosGeneration>, String> {
@@ -493,7 +510,8 @@ pub fn list_generations() -> Result<Vec<NixosGeneration>, String> {
             let id: u32 = parts[0].parse().ok()?;
             let date = format!("{} {}", parts[1], parts[2]);
             let current = line.contains("(current)");
-            Some(NixosGeneration { id, date, current })
+            let kernel = kernel_version_for_gen(id);
+            Some(NixosGeneration { id, date, current, kernel })
         })
         .collect();
     gens.sort_by(|a, b| b.id.cmp(&a.id));

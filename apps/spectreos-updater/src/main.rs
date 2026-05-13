@@ -703,9 +703,15 @@ fn build_system_tab(status_label: &Label) -> GtkBox {
                 row.set_margin_start(8);
                 row.set_margin_end(8);
 
-                let info = Label::new(Some(&format!("#{} — {}", gen.id, gen.date)));
-                info.set_halign(Align::Start);
+                let info = GtkBox::new(Orientation::Vertical, 2);
                 info.set_hexpand(true);
+                let gen_label = Label::new(Some(&format!("#{} — {}", gen.id, gen.date)));
+                gen_label.set_halign(Align::Start);
+                info.append(&gen_label);
+                let kernel_label = Label::new(Some(&format!("kernel {}", gen.kernel)));
+                kernel_label.set_halign(Align::Start);
+                kernel_label.add_css_class("dim-label");
+                info.append(&kernel_label);
                 row.append(&info);
 
                 if gen.current {
