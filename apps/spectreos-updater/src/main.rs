@@ -1142,26 +1142,50 @@ fn make_installed_row(
         let staged_list = staged_list.clone();
         let row = row.clone();
         let apply_btn = apply_btn.clone();
+        let update_all_btn = update_all_btn.clone();
+        let status_label = status_label.clone();
 
-        rm.connect_clicked(move |_| {
-            let raw = {
-                let s = state.borrow();
-                if s.installed.contains(&format!("unstable.{}", pname)) {
-                    format!("unstable.{}", pname)
-                } else {
-                    pname.clone()
+        rm.connect_clicked(move |btn| {
+            let window = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+            let dialog = gtk4::AlertDialog::builder()
+                .message(&format!("Uninstall {}?", pname))
+                .detail("This will remove it from your installed apps.")
+                .buttons(["Cancel", "Uninstall"])
+                .cancel_button(0)
+                .default_button(0)
+                .build();
+
+            let pname = pname.clone();
+            let state = state.clone();
+            let installed_list = installed_list.clone();
+            let staged_list = staged_list.clone();
+            let apply_btn = apply_btn.clone();
+            let update_all_btn = update_all_btn.clone();
+            let status_label = status_label.clone();
+            let row = row.clone();
+
+            glib::MainContext::default().spawn_local(async move {
+                if let Ok(1) = dialog.choose_future(window.as_ref()).await {
+                    let raw = {
+                        let s = state.borrow();
+                        if s.installed.contains(&format!("unstable.{}", pname)) {
+                            format!("unstable.{}", pname)
+                        } else {
+                            pname.clone()
+                        }
+                    };
+                    state.borrow_mut().staged_remove.insert(raw.clone());
+                    installed_list.remove(&row);
+
+                    let staged_row = make_staged_remove_row(
+                        pname.clone(), raw, state.clone(),
+                        staged_list.clone(), installed_list.clone(), apply_btn.clone(),
+                        update_all_btn.clone(), status_label.clone(),
+                    );
+                    staged_list.append(&staged_row);
+                    update_apply_btn(&apply_btn, &state);
                 }
-            };
-            state.borrow_mut().staged_remove.insert(raw.clone());
-            installed_list.remove(&row);
-
-            let staged_row = make_staged_remove_row(
-                pname.clone(), raw, state.clone(),
-                staged_list.clone(), installed_list.clone(), apply_btn.clone(),
-                update_all_btn.clone(), status_label.clone(),
-            );
-            staged_list.append(&staged_row);
-            update_apply_btn(&apply_btn, &state);
+            });
         });
     }
 
