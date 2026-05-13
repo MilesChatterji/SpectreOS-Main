@@ -233,7 +233,7 @@ fn build_ui(app: &Application) {
 
     window.set_child(Some(&root));
 
-    rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn);
+    rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn, &update_all_btn, &status_label);
 
     window.present();
 
@@ -338,7 +338,7 @@ fn build_ui(app: &Application) {
                         status_label.set_text("");
                     }
 
-                    rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn);
+                    rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn, &update_all_btn, &status_label);
                 }
             });
         }
@@ -398,7 +398,7 @@ fn build_ui(app: &Application) {
                             while let Some(child) = staged2.first_child() {
                                 staged2.remove(&child);
                             }
-                            rebuild_installed_list(&installed2, &staged2, &state2, &btn2);
+                            rebuild_installed_list(&installed2, &staged2, &state2, &btn2, &update_all_btn2, &status2);
                             update_apply_btn(&btn2, &state2);
                             update_all_btn2.set_sensitive(state2.borrow().any_updates());
                             search2.set_text("");
@@ -458,7 +458,7 @@ fn build_ui(app: &Application) {
                             let versions = state2.borrow().installed_versions.clone();
                             let _ = nix_ops::write_extra_packages(&pkgs, &versions);
                             status2.set_text("All packages updated.");
-                            rebuild_installed_list(&installed2, &staged2, &state2, &apply_btn2);
+                            rebuild_installed_list(&installed2, &staged2, &state2, &apply_btn2, &btn2, &status2);
                             btn2.set_sensitive(false);
                         }
                         Err(ref e) => {
@@ -795,6 +795,8 @@ fn rebuild_installed_list(
     staged_list: &ListBox,
     state: &Rc<RefCell<State>>,
     apply_btn: &Button,
+    update_all_btn: &Button,
+    status_label: &Label,
 ) {
     while let Some(child) = installed_list.first_child() {
         installed_list.remove(&child);
@@ -804,7 +806,8 @@ fn rebuild_installed_list(
         if state.borrow().staged_remove.contains(raw) { continue; }
         let pname = raw.split('.').last().unwrap_or(raw.as_str()).to_string();
         let row = make_installed_row(
-            pname, state.clone(), installed_list.clone(), staged_list.clone(), apply_btn.clone(),
+            pname, state.clone(), installed_list.clone(), staged_list.clone(),
+            apply_btn.clone(), update_all_btn.clone(), status_label.clone(),
         );
         installed_list.append(&row);
     }
@@ -958,6 +961,8 @@ fn make_staged_remove_row(
     staged_list: ListBox,
     installed_list: ListBox,
     apply_btn: Button,
+    update_all_btn: Button,
+    status_label: Label,
 ) -> ListBoxRow {
     let row = ListBoxRow::new();
     row.set_widget_name(&pname);
@@ -991,7 +996,7 @@ fn make_staged_remove_row(
         cancel.connect_clicked(move |_| {
             state.borrow_mut().staged_remove.remove(&raw);
             staged_list.remove(&row);
-            rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn);
+            rebuild_installed_list(&installed_list, &staged_list, &state, &apply_btn, &update_all_btn, &status_label);
             update_apply_btn(&apply_btn, &state);
         });
     }
@@ -1007,6 +1012,8 @@ fn make_installed_row(
     installed_list: ListBox,
     staged_list: ListBox,
     apply_btn: Button,
+    update_all_btn: Button,
+    status_label: Label,
 ) -> ListBoxRow {
     let row = ListBoxRow::new();
     let hbox = GtkBox::new(Orientation::Horizontal, 8);
@@ -1026,10 +1033,79 @@ fn make_installed_row(
     name_label.set_halign(Align::Start);
     name_row.append(&name_label);
     if has_update {
-        let badge = Label::new(Some("Update"));
-        badge.add_css_class("update-badge");
-        badge.set_valign(Align::Center);
-        name_row.append(&badge);
+        let update_btn = Button::with_label("Update");
+        update_btn.add_css_class("update-badge");
+        update_btn.add_css_class("flat");
+        update_btn.set_valign(Align::Center);
+
+        {
+            let pname = pname.clone();
+            let state = state.clone();
+            let installed_list = installed_list.clone();
+            let staged_list = staged_list.clone();
+            let apply_btn = apply_btn.clone();
+            let update_all_btn = update_all_btn.clone();
+            let status_label = status_label.clone();
+
+            update_btn.connect_clicked(move |btn| {
+                let available_ver = state.borrow().available_versions.get(&pname).cloned();
+                let final_packages = state.borrow().installed.clone();
+                let mut final_versions = state.borrow().installed_versions.clone();
+                if let Some(ref ver) = available_ver {
+                    final_versions.insert(pname.clone(), ver.clone());
+                }
+
+                btn.set_sensitive(false);
+                update_all_btn.set_sensitive(false);
+                status_label.set_text(&format!("Updating {}…", pname));
+
+                let (sender, receiver) = async_channel::bounded::<Result<(), String>>(1);
+                let pkgs = final_packages.clone();
+                let vers = final_versions.clone();
+                std::thread::spawn(move || {
+                    let result = nix_ops::write_extra_packages(&pkgs, &vers)
+                        .map_err(|e| e.to_string())
+                        .and_then(|_| nix_ops::run_home_manager());
+                    let _ = sender.send_blocking(result);
+                });
+
+                let btn2 = btn.clone();
+                let update_all_btn2 = update_all_btn.clone();
+                let status2 = status_label.clone();
+                let state2 = state.clone();
+                let installed2 = installed_list.clone();
+                let staged2 = staged_list.clone();
+                let apply_btn2 = apply_btn.clone();
+                let pname2 = pname.clone();
+                let available_ver2 = available_ver.clone();
+
+                glib::MainContext::default().spawn_local(async move {
+                    if let Ok(result) = receiver.recv().await {
+                        match result {
+                            Ok(()) => {
+                                {
+                                    let mut s = state2.borrow_mut();
+                                    if let Some(ver) = available_ver2 {
+                                        s.installed_versions.insert(pname2.clone(), ver);
+                                    }
+                                    s.available_versions.remove(&pname2);
+                                }
+                                status2.set_text(&format!("{} updated.", pname2));
+                                rebuild_installed_list(&installed2, &staged2, &state2, &apply_btn2, &update_all_btn2, &status2);
+                                update_all_btn2.set_sensitive(state2.borrow().any_updates());
+                            }
+                            Err(ref e) => {
+                                status2.set_text(&format!("Update failed: {}", e));
+                                btn2.set_sensitive(true);
+                                update_all_btn2.set_sensitive(state2.borrow().any_updates());
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        name_row.append(&update_btn);
     }
     info.append(&name_row);
 
@@ -1082,6 +1158,7 @@ fn make_installed_row(
             let staged_row = make_staged_remove_row(
                 pname.clone(), raw, state.clone(),
                 staged_list.clone(), installed_list.clone(), apply_btn.clone(),
+                update_all_btn.clone(), status_label.clone(),
             );
             staged_list.append(&staged_row);
             update_apply_btn(&apply_btn, &state);
