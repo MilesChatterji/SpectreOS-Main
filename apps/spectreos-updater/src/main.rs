@@ -484,7 +484,7 @@ fn build_system_tab(status_label: &Label) -> GtkBox {
     let next_ver = nix_ops::next_nixos_version(&current_ver).unwrap_or_default();
 
     let version_row = GtkBox::new(Orientation::Horizontal, 8);
-    let ver_title = Label::new(Some("Current NixOS version:"));
+    let ver_title = Label::new(Some("Current version:"));
     ver_title.set_halign(Align::Start);
     let ver_value = Label::new(Some(if current_ver.is_empty() { "unknown" } else { &current_ver }));
     ver_value.add_css_class("title-4");
@@ -540,11 +540,11 @@ fn build_system_tab(status_label: &Label) -> GtkBox {
                     btn2.set_label("Check for Upgrade");
                     btn2.set_sensitive(true);
                     if available {
-                        upgrade_status2.set_text(&format!("NixOS {} is available!", next_ver2));
+                        upgrade_status2.set_text(&format!("Version {} is available!", next_ver2));
                         upgrade_btn2.set_visible(true);
                         upgrade_btn2.set_sensitive(true);
                     } else {
-                        upgrade_status2.set_text(&format!("NixOS {} is not yet available.", next_ver2));
+                        upgrade_status2.set_text("No upgrade available.");
                     }
                 }
             });
