@@ -4,7 +4,7 @@ An opinionated NixOS derivative targeting people who want the power of NixOS wit
 
 Built on NixOS 25.11 with kernel 7.0, the [Niri](https://github.com/YaLTeR/niri) Wayland compositor, and [Noctalia Shell](https://github.com/bedsteler20/noctalia).
 
-> **Status: Beta.** The installer, VM ISO, and GUI package manager are all working. A clean install produces a complete SpectreOS experience — niri compositor, noctalia shell, ghostty terminal, home-manager user environment, and SpectreOS branding — on a fresh QEMU/KVM VM. Packages can be installed and removed graphically without touching the terminal.
+> **Status: Beta.** The installer, VM ISO, and GUI package manager are all working. A clean install produces a complete SpectreOS experience — niri compositor, noctalia shell, ghostty terminal, home-manager user environment, and SpectreOS branding — on a fresh QEMU/KVM VM. Packages can be installed, updated, and removed graphically. System kernel and driver updates can be applied and rolled back from the GUI without touching the terminal.
 
 ---
 
@@ -20,17 +20,36 @@ Built on NixOS 25.11 with kernel 7.0, the [Niri](https://github.com/YaLTeR/niri)
 
 ## SpectreOS Package Manager
 
-`spectreos-updater` is a GTK4 + Rust application included in every SpectreOS install. It is accessible from the niri app launcher under **SpectreOS Package Manager**.
+`spectreos-updater` is a GTK4 + Rust application included in every SpectreOS install, accessible from the niri app launcher under **SpectreOS Package Manager**. It provides full lifecycle management for both user packages and the underlying NixOS system — no terminal required.
 
-**Features:**
-- Searches nixpkgs via the NixOS Elasticsearch API — instant results, no local evaluation
+### Installed Apps tab
+
+- Lists every package managed by the updater with its installed version
+- On launch, checks the nixpkgs Elasticsearch index for newer versions; packages with an available update show a clickable **Update** button inline
+- **Update** (per-app): bumps that package's tracked version and runs `home-manager switch` — scoped to one package, does not touch others
+- **Update All**: updates all outdated packages in a single `home-manager switch`
+- **Uninstall**: prompts for confirmation before staging a removal
+
+### Search Apps tab
+
+- Searches nixpkgs via the NixOS Elasticsearch API — instant results, no local Nix evaluation required
 - **Include unstable** checkbox searches both `nixpkgs 25.11` and `nixpkgs-unstable` simultaneously; newer unstable versions surface first and are clearly labelled
-- Live button state: `+` to stage, `–` to unstage, `✓` for already-installed packages (including those installed by the base SpectreOS configuration)
-- Staged packages can be removed before applying; the Apply button only activates when there are pending changes
-- Applies changes via `home-manager switch`, incrementing a new generation — fully rollback-safe
-- Installed packages are written as a clearly-marked inline section inside `~/.config/home-manager/home.nix` so manual edits and updater-managed packages coexist in one file
-- Backs up `home.nix` to `home.nix.updater-bak` before every write
-- Unstable packages are written as `unstable.pkg` and resolved via the `unstable` channel overlay already present in the home configuration
+- `+` to stage a package for install, `–` to unstage; already-installed packages show `✓`
+- Staged installs and removals appear in the **Staged Changes** area below the tabs before anything is applied
+
+### System Updates tab
+
+- **Apply Updates**: runs `nix-channel --update` then a dry-build pre-flight check, shows a summary of what will change (derivations to build, paths to download), and asks for confirmation before running `nixos-rebuild switch`. On completion, offers **Reboot Now** or **Reboot Later**
+- **Check for Upgrade**: checks whether the next NixOS release (26.05 from 25.11, etc.) is available on channels.nixos.org and offers a one-click upgrade if so
+- **System Generations**: lists all NixOS generations newest-first, showing generation number, date, and kernel version. Non-current generations have a **Roll Back** button that switches to that generation immediately
+
+### Package management internals
+
+- Applies package changes via `home-manager switch`, incrementing a new home-manager generation — fully rollback-safe
+- Packages are written as a clearly-marked inline section inside `~/.config/home-manager/home.nix` so manual edits and updater-managed packages coexist without conflicts
+- A timestamped backup of `home.nix` is written before every apply
+- Unstable packages are written as `unstable.pkg` and resolved via the unstable channel overlay in the home configuration
+- System operations (rebuild, rollback, upgrade) run via sudoers-whitelisted helper scripts in `/etc/spectreos/` — no password prompt for wheel-group users
 
 ---
 
@@ -57,7 +76,7 @@ hosts/
     iso.nix                # Bootable VM installer ISO configuration
 defaults/
   niri/                    # Default niri + noctalia configs
-  noctalia/                # Default noctalia settings (v59 schema)
+  noctalia/                # Default noctalia settings
   ghostty/                 # Default ghostty config + noctalia theme
   fastfetch/               # Default fastfetch config + install-date script
   home.nix                 # Default home-manager configuration
@@ -65,8 +84,8 @@ defaults/
   hm-setup.sh              # First-boot home-manager setup script (runs via ghostty on first login)
 apps/
   spectreos-updater/       # GTK4 + Rust GUI package manager
-    src/main.rs            # UI — search results, staged list, installed list, apply flow
-    src/nix_ops.rs         # Backend — Elasticsearch search, home.nix read/write, home-manager invoke
+    src/main.rs            # UI — three-tab layout, staging area, system tab
+    src/nix_ops.rs         # Backend — Elasticsearch search, home.nix read/write, rebuild/rollback/upgrade
     package.nix            # Nix derivation (rustPlatform.buildRustPackage + wrapGAppsHook4)
     spectreos-updater.desktop
 assets/
@@ -83,8 +102,8 @@ build-iso.sh               # Convenience script to build the VM installer ISO
 
 ## Installing via ISO (recommended)
 
-1. Build or download `spectreos-vm-installer.iso`
-2. Create a QEMU/KVM VM with UEFI firmware, virtio disk, 8 GB+ RAM, 4+ vCPUs
+1. Build or download `spectreos-minimal-<label>-x86_64-linux.iso`
+2. Create a QEMU/KVM VM with UEFI firmware, virtio disk, 20 GB+ storage, 8 GB+ RAM, 4+ vCPUs
 3. Boot the ISO — the SpectreOS installer launches automatically
 4. Follow the prompts (disk selection, username, password)
 5. The system installs and reboots automatically
@@ -97,7 +116,7 @@ On first login, a ghostty terminal opens and runs home-manager setup. When compl
 git clone https://github.com/MilesChatterji/SpectreOS-Main
 cd SpectreOS-Main
 bash build-iso.sh
-# Output: result/iso/spectreos-vm-installer.iso
+# Output: result/iso/spectreos-minimal-<label>-x86_64-linux.iso
 ```
 
 ---
@@ -122,7 +141,7 @@ After install and reboot:
 - home-manager installs user packages (Firefox, Spotify, Brave, development tools, etc.)
 - Wallpaper and full GTK theming applied on completion
 - System reboots into the finished environment
-- SpectreOS Package Manager is available in the app launcher for installing and removing software
+- SpectreOS Package Manager is available in the app launcher for installing, updating, and removing software
 
 ---
 
@@ -130,9 +149,9 @@ After install and reboot:
 
 SpectreOS uses NixOS generations for safe rollbacks at every level:
 
-- **Package changes** (via the GUI updater): `home-manager rollback` or `home-manager switch --switch-generation <id>`
-- **System changes**: `sudo nixos-rebuild switch --rollback` or select a prior generation from the GRUB boot menu
-- **home.nix file**: `~/.config/home-manager/home.nix.updater-bak` is written before every updater apply
+- **Package changes**: use the home-manager generation history (`home-manager generations`) or reinstall via the GUI
+- **System changes**: select a prior generation from the **System Updates** tab in the SpectreOS Package Manager, or choose a prior generation from the GRUB boot menu at startup
+- **home.nix file**: a timestamped backup is written before every updater apply
 
 ---
 
@@ -151,7 +170,7 @@ The PX13 host (`hosts/px13/`) is the primary development and daily-driver machin
 ## Roadmap
 
 1. **✅ VM installer + ISO** — working. Automated install, first-boot home-manager setup, SpectreOS branding.
-2. **✅ GUI package manager** — shipped. `spectreos-updater`: GTK4 + Rust, stable + unstable nixpkgs search, home-manager integration, generation-safe installs and removals. Tested end-to-end on PX13.
+2. **✅ GUI package manager** — shipped. Three-tab UI: Installed Apps (per-app updates, uninstall confirmation), Search Apps (stable + unstable nixpkgs), System Updates (dry-run preview, kernel/driver updates, generation list with kernel versions, one-click rollback, NixOS version upgrade). Tested end-to-end on PX13 and QEMU/KVM VMs.
 3. **ISO polish** — SpectreOS branding in boot menu, improved first-boot UX, pre-built VM image for less technical testers.
 4. **Noctalia fork** — fork noctalia-shell, contribute SpectreOS-specific widgets, keep upstream merges clean.
 5. **Flake ISO** — ISO build config becomes a flake pinning the noctalia fork. Installed system stays traditional NixOS.
